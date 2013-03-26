@@ -1,0 +1,33 @@
+RTITE -> CRTITA -> WRV HowTo
+----------------------------
+Benötigte Skripte:
+RTITE -> CRTITA:
+- Converter.py
+CRTITA -> WRV:
+- main.py
+- SQSTR2DB.py
+- SQSDB.py
+- SQSDB_Logging.py
+---------------------------
+Ablauf:
+1. 	Converter.py mit folgenden Argumenten Starten:
+	python Converter.py "<RootOrdner>" "<ZielOrdner>" "<Optionen>"
+	- <RootOrdner> 	ist ein Pfad zu einem Ordner unter dem alle zu konvertierenden .mat-Deteien liegen.
+					Der Converter findet diese, konvertiert sie und speichert sie inkl. Conf.txt (Default, benötigt für WRV-Import)
+					unter <ZielOrdner>.
+	- <ZielOrdner>	ist der Pfad unter dem die konvertierten Result-Dateien abgelegt werden.
+	- <Optionen>	ist ein String, der beliebig folgende Optionen enthalten kann:
+					-printmat		Der Inhalt der zu konvertierenden .mat-Datei wird auf der Konsole strukturiert ausgegeben.
+					-printresult	Der Inhalt der erzeugten Result-Datei (crtita_result) wird auf der Konsole ausgegeben.
+					-noconf			Es werden keine Conf.txt-Dateien erstellt.
+					-maxlength=<#>	Die Ausgabe von -printmat und -printresult wird auf <#> Zeichen pro Zeile beschränkt (wobei <#> eine ganze Zahl ist).
+									Dies ist nützlich, um lange Logausgaben verkürzt darzustellen. Default ist 100.
+	Nach dem Start werden alle gefundenen .mat-Dateien konvertiert und im Zielverzeichnis abgelegt.
+
+2. 	Falls dieses nicht als Zielordner angegeben wurde, 
+	muss die gesamte Struktur unterhalb des Zielordners in den "new"-Ordner des CRTITA-Importers kopiert werden.
+	
+3.	Starten des WRVImporters durch Ausführen des main.py-Skriptes. Dieses startet einen Daemon, der automatisch nach neuen Dateien im "new"-Ordner
+	sucht und diese in die Datenbank hochlädt. Dieser Import dauert normalerweise ein Paar Stunden.
+	
+4.	Fertig :)
