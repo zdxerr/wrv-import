@@ -12,11 +12,6 @@
 # Author: Marek Röhm Lars Große
 #
 
-"""
-ToDo:
-    -
-"""
-
 SS2DB_Date    = "23.03.2010"
 SS2DB_Version = "1.03.03"
 
@@ -114,7 +109,7 @@ def logUpdate(txt):
 # MichaelRo
 # def ImportData(db,ts_root,prodDBEntry,scriptnamedict):
 
-def ImportData(db,ts_root,folderpath,prodDBEntry):
+def ImportData(db, ts_root, folderpath, prodDBEntry):
 
     scriptnamedict = {}
 

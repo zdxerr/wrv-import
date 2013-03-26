@@ -118,134 +118,19 @@ def insertResult(folderpath, daemonPath, folder, name, logPath):
         db.CloseDB()
     db = None
 
-
-def clearLogFolders(daemonpath, saveUnknownAuthors):
-    try:
-        logPath = os.path.join(daemonpath, "logs")
-        logFoldernames = os.listdir(logPath)
-        logFoldernames.sort()
-        print "logpaths found ... " + str(len(logFoldernames))
-        for logPathName in logFoldernames:
-            if not os.path.isdir(logPath+"\\"+logPathName):
-                continue
-            print "Checking "+logPath+"\\"+logPathName+" ... "
-            dodelete = not os.path.exists(logPath+"\\"+logPathName + "\\"+"CRTITA-DBImport.ERROR.txt")
-            if not dodelete:
-                print "Cannot delete "+logPath+"\\"+logPathName+" because CRTITA-DBImport.ERROR.txt exists in folder!"
-            else:
-                dodelete = not os.path.exists(logPath+"\\"+logPathName + "\\"+"CRTITA-DBImport.DBTimelog."+logPathName+".csv")
-                if not dodelete:
-                    print "Can not delete %r because CRTITA-DBImport." \
-                        "DBTimelog.%s.csv exists in folder!" % (
-                        os.path.join(logPath, logPathName), logPathName)
-            authors = os.path.join(logPath, logPathName,
-                                   "CRTITA-DBImport.Update.csv")
-
-            if dodelete and saveUnknownAuthors and os.path.exists(authors):
-                print "Checking for <unknown> authors in " + authors
-                f = open(authors)
-                for line in f:
-                    line = line.strip("\n")+';'
-                    col = line.split(";")
-                    author = col[1]  # ab sofort neues Tabellenformat ...
-                    #print "Author = " + author
-
-                    # MichaelRo
-                    # if author == "<unknown>":
-                    if author == "&lt;unknown&gt;":
-                        dodelete = False
-                        print "Cannot delete %r because some <unknown> " \
-                            "authors exists in file!" % (
-                            os.path.join(logPath, logPathName))
-                        break
-                f.close()
-            if dodelete:
-                shutil.rmtree(logPath+"\\"+logPathName)
-                print "Clearing logging directories ... Path "+logPath+"\\"+logPathName+" was deleted!"
-    except:
-        SQSDB_Logging.logging("Failed to clear logging directories!", logPath)
+def insert_result():
+    db = SQSDB.SQS2SQL(None)
+    db.OpenDB(True)
 
 
-def main(oneShot):
+def main():
+    import find_results
+    result_path = r"R:\PE\Testdata\CRTI-Test\ImplSW_RLS_2013-A"
+    for result_file in find_results.results(result_path, 'crtita'):
+        print "Found result at %r." % (result_file, )
+        insert_result()
+        # insertResult()
 
-    # daemonPath = "D:\\CRTITAWRVImport"
-    # path = os.path.join("\\\\Nas1-dspace\\Info\\CRTITAWRVImport", "new")
-    # old = os.path.join("\\\\Nas1-dspace\\Info\\CRTITAWRVImport", "old")
-
-    # MichaelRo
-    # Relative new/old under daemonPath only here for running eclipse project.
-    # TODO: move settings to _Configuration.py
-
-    # MichaelRo
-    global daemonPath, workingDir, logPath, path, old
-
-    daemonPath = os.path.abspath('..')
-
-    print daemonPath
-    path = os.path.abspath(os.path.join(daemonPath, 'new'))
-    old = os.path.abspath(os.path.join(daemonPath, 'old'))
-
-    if not os.path.exists(old):
-        os.mkdir(old)
-    workingDir = os.path.join(daemonPath, "working")
-    logPath = os.path.join(daemonPath, "logs")
-
-    os.chdir(os.path.join(daemonPath, 'main'))
-
-    print "TestResultDaemon startet ....."
-
-    cnt = 1440 // _Configuration.waitingTime
-    while(True):
-        foldernames = os.listdir(path)
-        foldernames.sort()
-
-        if len(foldernames) == 0:
-            print "no work to do, sleeping ..."
-            cnt = cnt + 1
-            # taeglich nur genau einmal pruefen und loeschen ...
-            if cnt * _Configuration.waitingTime >= 86400:
-                cnt = 0
-                print "Trying to clear logdirectories ..."
-                clearLogFolders(daemonPath, _Configuration.gb_SaveUnknownAuthors)
-            # MichaelRo
-            if oneShot:
-                break
-
-            time.sleep(_Configuration.waitingTime)
-        elif len(foldernames) > 0 and not os.path.exists(os.path.join(path, "locked")):
-            if not os.path.exists(os.path.join(old, foldernames[0])):
-                shutil.copytree(os.path.join(path, foldernames[0]), os.path.join(old, foldernames[0]))
-            if os.path.exists(os.path.join(path, foldernames[0], 'crtita_result')):
-                print "CRTITA_Result found in folder " + str(os.path.join(path, foldernames[0]))
-
-                #print 'os.path.join(path,foldernames[0],"crtita_result")  %s' % (os.path.join(path,foldernames[0],'crtita_result'),)
-                #print 'workingDir %s' % (workingDir,)
-                shutil.copy(os.path.join(path, foldernames[0], 'crtita_result'),
-                            workingDir)
-                # exit()
-
-                insertResult(os.path.join(path, foldernames[0]), daemonPath,
-                             path, foldernames[0], logPath)
-                try:
-                    shutil.rmtree(os.path.join(path, foldernames[0]))
-                except:
-                    print "Error: Cannot delete " + foldernames[0]
-                os.remove(os.path.join(workingDir, 'crtita_result'))
-            else:
-                print "Error: CRTITA_Result not found in " + foldernames[0] + " moving to corrupt directory"
-                SQSDB_Logging.logging("\nError: CRTITA_Result not found in " + foldernames[0], logPath)
-                if not os.path.exists(os.path.join(daemonPath, "corrupt")):
-                    os.mkdir(os.path.join(daemonPath, "corrupt"))
-                try:
-                    if not os.path.exists(os.path.join(daemonPath, "corrupt", foldernames[0])):
-                        shutil.copytree(os.path.join(path, foldernames[0]), os.path.join(daemonPath, "corrupt", foldernames[0]))
-                except:
-                    SQSDB_Logging.logging("\nError: Try copying path: " + foldernames[0], logPath)
-                try:
-                    shutil.rmtree(os.path.join(path, foldernames[0]))
-                except:
-                    SQSDB_Logging.logging("\nError: Try deleting path: " + foldernames[0], logPath)
-            foldernames = ""
 
 if __name__ == '__main__':
-    main(False)
+    main()
