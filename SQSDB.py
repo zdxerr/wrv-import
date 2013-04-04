@@ -11,117 +11,22 @@
 # Author: Marek Roehm
 #
 
-Date    = "24.06.2009"
-Version =  "2.00.03"
-
-"""
-ToDo:
-    -
-
-
-History:
-    2.00.03 - MR - Improve AddTestCasesResultDescription
-                 - Improve TestStep Search for Unicode DB
-    2.00.02 - MR - Unterstuetzung f�tCase Kommentare zwischen den TestCases
-    2.00.01 - MR - Optimierung f�code Datenbank
-    2.00.00 - MR - Anpassungen f�ssql 1.00.02
-                   und MSSQL 2005
-                   und Unicode
-                   - SQLStatementResult
-                     - Autocommit ist per default False
-                   - Vereinheitlichung der Datei f�ort
-                     aus SS und aus Dateien
-    1.04.00 - MR - Changes to support direkt DB import:
-                   Fixing wrong Statistic:
-                   - UpdateTestComponentsResults
-                   - UpdateTestCaseResultTCRID
-                   - help_getResults
-                   - UpdateTestGroupResult
-                   Fix missing TestCandidate Info:
-                   - updateTestComponentResult_ResDesc
-    1.03.02 - MR - Anpassung f�e Datenbank
-    1.03.01 - MR - updateTestComponentResult_ResDesc
-                    - Fix Problem with OSWhileTestExec,ShortTestPCDesc...
-    1.03.00 - MR - Add a table: TestCasesResultDescription
-                   and change another table: TestStepsResults
-                   - AddTestCasesResultDescription
-    1.02.02 - MR - Use old Server
-    1.02.01 - MR - Use new Server
-    1.02.01 - MR - Fix some problemes
-                    - Split update command to avoid lenght problem
-                      (Should fix date problem)
-                    - Update TEstComponentsResults, fix None Problem
-    1.02.00 - MR - Use new Server
-    1.01.19 - MR - Update: Calculate Statistics.
-    1.01.18 - MR - Change Update TestComponents
-    1.01.17 - MR - Correct Data Error
-    1.01.16 - MR - Use Debug DB
-    1.01.15 - MR - Convert TextCasesNames to dbstrings
-    1.01.14 - MR - Fix lenght problem of Label Names
-    1.01.13 - MR - Update "saveUserInfo"
-                 - Update Label Time only if time > 0
-    1.01.12 - MR - createGetLabelID uses dbString to convert Label
-    1.01.11 - MR - Improve Statistic Update Error Handling
-    1.01.10 - MR - Shorten Debug Output
-    1.01.09 - MR - Rais exception if DB should be deleted
-    1.01.08 - MR - getNewTLID: Support level < 2
-    1.01.07 - MR - Define first INDEX Table to speed up DB.
-    1.01.06 - MR - Support debug database.
-    1.01.05 - MR - Fix Bug in getNewTLID: Create new TLID if a item has no sub items.
-    1.01.04 - MR - Set Result to -99999 if correct Value can't be get.
-                 - Improve error handling of getNewTLID
-    1.01.03 - MR - Save the user edited Data from the DB.
-    1.01.02 - MR - TestStepResults supports traceback field.
-                 - Update Label Time
-    1.01.01 - MR - Correct Error on Masking "'"
-    1.01.00 - MR - Add TLID into strukture.
-    1.00.10 - MR - Extend LabelIDNames by "Date"
-                 - Extend TestComponentsResults for ResultDesk Info
-    1.00.09 - MR - Extend TLIDName by "UpdateTime" and "Status"
-    1.00.08 - MR - Add "OfficialLabel" Flag to Label Table
-    1.00.07 - MR - Add display Label to Label Table
-                 - Correct the display label strings
-                 - Create dummy entry (-1)
-    1.00.06 - MR - Add a Reference between TestSteps / TestStepsResults.
-    1.00.05 - MR - TestComponentsResults supports OS.
-    1.00.04 - MR - Minor Bug Fixes by Update Functions
-    1.00.03 - MR - Add Table for TestGroupsResult
-                 - Update Statistic Info
-    1.00.02 - MR - Add Result of Test Steps to Test Case
-    1.00.01 - MR - Optimize DB Structure (Use varchar instad of text)
-                 - Add Table for Labels
-                 - Add Table for TestComponentResult
-    1.00.00 - MR - First fully working version
-"""
-
-
-#-------------------------------------------------------------------------------
 # Import of some basic functions
 #
 
 # MichaelRo
 # from SQSDB_Logging import * # Logging of this script
-from SQSDB_Logging import debug,debugLog
+# from SQSDB_Logging import debug,debugLog
 
 import _Configuration
 
-import pymssql              # External modul used to access data base
-                            # More info: http://pymssql.sourceforge.net/
-import string               # String handling
-import time                 # Time functions
-
-# MichaelRo
-# import sys                  # System access
-
-import os                   # Operating System functions
+import pymssql  # http://pymssql.sourceforge.net/
+import string
+import time
 
 # MichaelRo
 import cfg
 
-
-
-
-#-------------------------------------------------------------------------------
 # Helpfunction: Convert a String so it can be saved into the DB
 #
 def dbStr(val):
@@ -175,7 +80,6 @@ def convDate(dt):
         dt = d+"."+m+"."+y
     return dt
 
-#-------------------------------------------------------------------------------
 # Helpfunction: Convert a Time-String into time
 #
 def convString2Time(dateNow,timeNow = "00:00:00"):
@@ -183,7 +87,6 @@ def convString2Time(dateNow,timeNow = "00:00:00"):
     splitTimeNow = string.split(timeNow,":")
     return time.mktime([string.atoi(splitDateNow[2]),string.atoi(splitDateNow[1]),string.atoi(splitDateNow[0]),string.atoi(splitTimeNow[0]),string.atoi(splitTimeNow[1]),string.atoi(splitTimeNow[2]),0,0,-1])
 
-#-------------------------------------------------------------------------------
 # Helpfunction: Convert a numeric value into hex-representation
 #
 def hex16(i):
@@ -193,14 +96,12 @@ def hex16(i):
 def isNullOrEmpty(res):
     return (res == None) or (res == [[None]]) or (res == []) or (res[0][0] == None)
 
-# ##############################################################################
 #
 # Database Main Class
 #
 #
 class SQS2SQL:
 
-    #---------------------------------------------------------------------------
     # On Inint set some basic variables
     #
     def __init__(self,SourceSafe=None):
@@ -208,12 +109,15 @@ class SQS2SQL:
         self.cur = None
         self.prePath = _Configuration.prePath
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Open the Data base
     #
-    def OpenDB(self,debugDB = False):
-        if self.con == None:
-            debug("host=%s, user=%s, Database=%s"%(_Configuration.DB_host,_Configuration.DB_user,_Configuration.DB_database))
+    def OpenDB(self, debugDB=False):
+        if not self.con:
+            print "host=%s, user=%s, Database=%s" % (
+                _Configuration.DB_host,
+                _Configuration.DB_user,
+                _Configuration.DB_database)
 
             conn = pymssql.connect(host     = _Configuration.DB_host,
                                    user     = _Configuration.DB_user,
@@ -223,7 +127,7 @@ class SQS2SQL:
             self.cur = conn.cursor()
 
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Close the Data base
     #
     def CloseDB(self):
@@ -231,16 +135,14 @@ class SQS2SQL:
         self.con.close()
 
 
-    #---------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     # Commit a statement
     #
     def Commit(self):
         self.con.commit()
 
 
-    #---------------------------------------------------------------------------
     # Execute a SQL Statment and commit it.
-    #
     def SQLStatement(self, statement, autocommit = True):
         ret = None
         try:

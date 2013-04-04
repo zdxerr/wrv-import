@@ -1,88 +1,16 @@
 ﻿# -*- coding: utf-8 -*-
 
-# ##############################################################################
-#
-#            S Q S   T e s t R e s u l t  t o   D a t a  B a s e
-#
-# This is the main execution script of the Testresult to Data Base export of
-# the CRTITA.
-#
-# It allows do define several jobs that will be executed.
-#
-# Author: Marek Röhm Lars Große
-#
-
-SS2DB_Date    = "23.03.2010"
-SS2DB_Version = "1.03.03"
-
-"""
-History:
-"""
-
-# ------------------------------------------------------------------------------
-# Import some functions
-#
-
-# MichaelRo
-# Local crtita 2.12 modules for testing.
-# FIXME: import dir from installed CRTITA
-import sys
-sys.path.append('../crtita_pyc')
-
 import _Configuration
-# reload (_Configuration)
 
-# import crtita_result            # Access to the CRTITA Result File @UnresolvedImport
-
-#import string
 import copy
-#import time
-#import datetime
-#import sys
 import os
+from datetime import time
 
-# MichaelRo
 import cfg
 
+import SQSDB
 
 
-# ------------------------------------------------------------------------------
-# Extend the search path for the imports
-#
-def addPath(name):
-    i = True
-    for p in sys.path:
-        if p==name:
-            i = False
-    if i==True:
-        sys.path.insert(0,name)
-        print "Included:",name
-    else:
-        print name, ": Already included"
-
-# import WRV_Helper
-import SQSDB                     # Data Base access
-# import StoreCRTITAResults2DB
-
-
-# ------------------------------------------------------------------------------
-# Get the start folder of this script
-#
-
-startDir = os.path.dirname(sys.argv[0])
-if os.path.isdir(startDir) == 0:
-    startDir = os.getcwd()
-
-# ------------------------------------------------------------------------------
-# Create a file, blocking a further start of this script
-#
-
-UpdateLogFile = startDir+"\Update Running.txt"
-
-
-# -----------------------------------------------------------------------------
-# Write a entry to the update file
-#
 
 logPath = os.path.join(_Configuration.logPath, _Configuration.foldername)
 
@@ -93,82 +21,68 @@ def logUpdate(txt):
     fa.close()
 
 
-# #############################################################################
-# ImportData writes the test results into the WRV-db to gets a complete result
-#
-
-
-
-##
-##
-#                        <dir "working" with copied crtita_result>             "/<product name>"                      (see above)
-
-##
-##
-
-# MichaelRo
-# def ImportData(db,ts_root,prodDBEntry,scriptnamedict):
-
 def ImportData(db, ts_root, folderpath, prodDBEntry):
 
     scriptnamedict = {}
 
     def fillZero(val):
-        if len(val)==1:
-            val = "0"+val
+        if len(val) == 1:
+            val = "0" + val
         return val
 
     def getTimeStr(timeval):
+
         ltstr = time.localtime(_Configuration.gb_StartTime)
-        mm    = fillZero(str(ltstr[1]))
-        dd    = fillZero(str(ltstr[2]))
+        mm = fillZero(str(ltstr[1]))
+        dd = fillZero(str(ltstr[2]))
 
         # MichaelRo - unused
         #hh    = fillZero(str(ltstr[3]))
         #min   = fillZero(str(ltstr[4]))
         #ss    = fillZero(str(ltstr[5]))
 
-        tstr  = str(ltstr[0])+"/"+mm+"/"+dd  # +" "+hh+":"+min+":"+ss
+        tstr = str(ltstr[0])+"/"+mm+"/"+dd  # +" "+hh+":"+min+":"+ss
         return tstr
 
+    # Read the common information about the test from common fields of the
+    # test case results.
 
-
-    ##
-    ##   Read the common information about the test from common fields of the test case results.
-    ##
-    ##   Only once called from ImportData().
-    ##
-    ##   @param  testRes  Unpickled crtita_result file.
-    ##
-    ##   @return  (sslabel,display_label) for correspondent fields in DB LabelIDNames table.
-    ##
+    # @param  testRes  Unpickled crtita_result file.
+    # @return  (sslabel,display_label) for correspondent fields in DB
+    # LabelIDNames table.
 
     def getCommonTestData(testRes):
         try:
-            testEnv    = testRes["EnvInfo"]
+            testEnv = testRes["EnvInfo"]
             testRunCfg = testRes["TestrunConfig"]
 
             # MichaelRo
             # dispLabel  = testRunCfg["TestDescription"]
             dispLabel = cfg.getTestDisplayLabel(testRes)
 
-            summary    = testRes["Summary"]
-            startTime  = summary["Start time"]
-            endTime    = summary["End time"]
-            _Configuration.gb_StartTime = time.mktime(time.strptime(startTime,"%a, %d %b %Y %H:%M:%S "))
-            if endTime.lower().find("finished")>=0:
+            summary = testRes["Summary"]
+            startTime = summary["Start time"]
+            endTime = summary["End time"]
+            _Configuration.gb_StartTime = \
+                time.mktime(time.strptime(startTime, "%a, %d %b %Y %H:%M:%S"))
+            if endTime.lower().find("finished") >= 0:
                 _Configuration.gb_EndTime = _Configuration.gb_StartTime + 3600
             else:
-                _Configuration.gb_EndTime = time.mktime(time.strptime(endTime,"%a, %d %b %Y %H:%M:%S "))
+                _Configuration.gb_EndTime = \
+                    time.mktime(time.strptime(endTime,
+                                "%a, %d %b %Y %H:%M:%S"))
 
-            # set global variables in _Configuration.py, some CRTITA-versions deliver numbers at key-start
-            if testEnv.has_key("Operating system"):
-                _Configuration.gb_OSWhileTestExec   = testEnv["Operating system"]
-                _Configuration.gb_CRTITAVersion     = testEnv["CRTITA version"]
-                _Configuration.gb_PythonVer         = testEnv["Python version"]
-            elif testEnv.has_key("6Operating system"):
-                _Configuration.gb_CRTITAVersion     = testEnv["1CRTITA package version"]
-                _Configuration.gb_FrameVersion      = testEnv["2Frame version"]
+            # set global variables in _Configuration.py, some CRTITA-versions
+            # deliver numbers at key-start
+            if 'Operating system' in testEnv:
+                _Configuration.gb_OSWhileTestExec = \
+                    testEnv.get('Operating system')
+                _Configuration.gb_CRTITAVersion = testEnv.get('CRTITA version')
+                _Configuration.gb_PythonVer = testEnv.get('Python version')
+            if '6Operating system' in testEnv:
+                _Configuration.gb_CRTITAVersion = \
+                    testEnv.get('1CRTITA package version')
+                _Configuration.gb_FrameVersion = testEnv.get('2Frame version')
 
                 for k in testEnv.keys():
                     if k.find("3Extensions")>=0:
@@ -206,14 +120,12 @@ def ImportData(db, ts_root, folderpath, prodDBEntry):
             debug("Exception handling global CRTITA-Testdata.", Level=1, Fcn="CRTITA2DB",NoTB = False)
         return dblabel,dispLabel
 
-    # --------------------------------------------------------------------------
     #   read and convert the execution time from a test script
-    #
     def getExecTimeAsString(testResult):
         result = "01:00:01"
-        hstr  = testResult["execTime"].strip(']')
-        hstr  = hstr.split('[')
-        if len(hstr)>2:
+        hstr = testResult["execTime"].strip(']')
+        hstr = hstr.split('[')
+        if len(hstr) > 2:
             result = hstr[2]
         return result
 
@@ -233,44 +145,39 @@ def ImportData(db, ts_root, folderpath, prodDBEntry):
                     break
         return result
 
-
-
-
-    ##
     ##   @param  tcPreName  NOT USED
-    ##
-
-    def createOrUpdateCrashed(tcomprid,testResult,path,tcnum,tcPreName,groupName,prtcid,tlid1,tlid2,labelid,oswt,starttime,stoptime):
+    def createOrUpdateCrashed(tcomprid, testResult, path, tcnum, tcPreName,
+                              groupName, prtcid, tlid1, tlid2, labelid, oswt,
+                              starttime, stoptime):
         tcnid = None
         tcrid = None
 
         #version    = "1.00.00"     # muss noch geschickt geholt werden
-        #ssver      = 1             # muss noch geschickt geholt werden (z.B. aus MKS)
-        #author     = "<unknown>"   # muss noch geschickt geholt werden (z.B. aus Mapping-Tabelle)
-        version, ssver, author, date = StoreCRTITAResults2DB.getScriptInformation(scriptnamedict, path)
-        status     = 2             # crashed
+        #ssver      = 1             # muss noch geschickt geholt werden
+        #author     = "<unknown>"   # muss noch geschickt geholt werden
+        # version, ssver, author, date = \
+        #     StoreCRTITAResults2DB.getScriptInformation(scriptnamedict, path)
+        status = 2             # crashed
 
         # MichaelRo - unused
         #g_comment  = ""
         #tc_comment = ""
         #stepValue  = ""
 
-        tstype     = getTSTypeAsString(path, testResult)
-        tcaseName  = "Crash-Dummy-Name"
-        comment    = "Complete Script has crashed! No Testcases computable ..."
-        ts_ok,ts_fail,ts_crash,ts_no = 0,0,0,0
-        if testResult["status"]==3:
-            status    = 4       # bedeutet "blocked" in WRV
-            ts_no     = 1
-            comment   = "Script aborted during initialization! No Testcases/Teststeps computable ..."
+        tstype = getTSTypeAsString(path, testResult)
+        tcaseName = "Crash-Dummy-Name"
+        comment = "Complete Script has crashed! No Testcases computable ..."
+        ts_ok, ts_fail, ts_crash, ts_no = 0, 0, 0, 0
+        if testResult["status"] == 3:
+            status = 4       # bedeutet "blocked" in WRV
+            ts_no = 1
+            comment = "Script aborted during initialization!" \
+                      "No Testcases/Teststeps computable ..."
         else:
-            ts_crash  = 1
+            ts_crash = 1
 
-        tcListEntry = { 'ScreenShots': [],\
-                        'status': status,\
-                        'tcName': tcaseName,\
-                        'tcNum': 0,\
-                        'userData': {}}
+        tcListEntry = {'ScreenShots': [], 'status': status,
+                       'tcName': tcaseName, 'tcNum': 0, 'userData': {}}
 
         # MichaelRo
         ## tcName = tcPreName+tcListEntry["tcName"]
@@ -279,14 +186,12 @@ def ImportData(db, ts_root, folderpath, prodDBEntry):
 
         testDescription = tcName
 
-        tgid  = db.createGetTestGroupID([prtcid, tlid1, tlid2], groupName)
-        tgrid = db.setGetTestGroupResultID(tcomprid,tgid,"")
+        tgid = db.createGetTestGroupID([prtcid, tlid1, tlid2], groupName)
+        tgrid = db.setGetTestGroupResultID(tcomprid, tgid, "")
         found = False
 
-        if found == False:
-            # -------------------------------------------------------------------------
+        if not found:
             # Copy Test Case and TestSteps to DataBase, if not exists
-            #
             tcnid = db.GetTestCasesNameIdByName(tgid,path+ " : "+str(tcnum))
             if tcnid==-1:
                 tcnid = db.AddTestCaseName(tgid,path+ " : "+str(tcnum))
@@ -555,43 +460,27 @@ def ImportData(db, ts_root, folderpath, prodDBEntry):
 
         return cfg.getTestGroupName(ssResultPath,ssTLIDName),tcpart
 
-
-
-
-
-    ##
-    ##   Get test case name from test case path parts list.
-    ##
-    ##   @remark  Called only once from ImportData() with tcpart from getGroupname().
-    ##
-    ##   @param   name   tcpart from getGroupname(), ['', ... ,'<at-dir>','<script name>']
-    ##
-    ##   @return  (Erroneous) Test case name (NOT USED from caller).
-    ##
+    # Get test case name from test case path parts list.
+    # @remark  Called once from ImportData() with tcpart from getGroupname().
+    # @param   name   tcpart from getGroupname()
+    # @return  (Erroneous) Test case name (NOT USED from caller).
 
     def getTestCaseName(name):
         i = 2
         hstr = ""
-        while i<len(name):
+        while i < len(name):
             hstr = hstr + name[i] + "/"
             i += 1
         return hstr
 
-
-
-
-
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #
     # Ab hier wird die Liste der TestSuiten geholt.
     #
     # ssTestCasesPaths => Liste der TestSuiten
     # Ergibt die Struktur der Datenbank!!!!!
-    #
-    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    print "TEST"
 
-
-    Res = crtita_result.CRTITAResultFileClass(ts_root + "\crtita_result")      # load complete result from test result data file
+    Res = crtita_result.CRTITAResultFileClass(ts_root + "\crtita_result")
     Res.Load()
     CompleteContent = Res.GetResult()
 
