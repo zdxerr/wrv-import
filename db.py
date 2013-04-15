@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+Remove all contents from a SQS-Databes and create new path roots.
+"""
 
 import pymssql
 
-
-
-
-class DB:
+class SQSDatabase:
     tables = [
         'component',
         'files',
@@ -85,7 +85,7 @@ class DB:
             print "OK"
 
 if __name__ == '__main__':
-    db = DB('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
+    db = SQSDatabase('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db.clear()
     for r in ('RTIxxxMM', 'RTIFlexRay', ):
         db.insert_root(r)
