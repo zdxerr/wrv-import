@@ -231,7 +231,7 @@ class SQSDatabase:
                 %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, 0,
-                0, 0, 0, 0, 0, 0);'''
+                0, 0, 0, 0, 0, 0)'''
 
         cur.execute(q, (self.parrent, self.tlid1, self.tlid2, self.label_id,
                         "OS", tcompr_id,
@@ -247,8 +247,182 @@ class SQSDatabase:
 
                         ))
         self.c.commit()
+        self.tcompr_id = tcompr_id
         return tcompr_id
 
+    def __test_group_get(self, cur, name):
+        cur.execute('SELECT tgid FROM TestGroups WHERE prtcid=%d AND ' \
+                    'tlid1=%d AND tlid2=%d AND name=%s',
+                    (self.parrent, self.tlid1, self.tlid2, name))
+        r = cur.fetchone()
+        return r[0] if r else None
+
+    def test_group(self, name):
+        cur = self.c.cursor()
+
+        tg_id = self.__test_group_get(cur, name)
+        if not tg_id:
+            cur.execute('SELECT max(tgid) FROM TestGroups')
+            tg_id = (cur.fetchone()[0] or 0) + 1
+
+            cur.execute('INSERT INTO TestGroups (prtcid, tlid1, tlid2, tgid,' \
+                        'name) VALUES (%d, %d, %d, %d, %s)',
+                        (self.parrent, self.tlid1, self.tlid2, tg_id, name))
+            self.c.commit()
+        self.tg_id = tg_id
+        return tg_id
+
+    def __test_group_result_get(self, cur):
+        cur.execute('SELECT tgrid FROM TestGroupsResults WHERE tgid=%d AND ' \
+                    'tcomprid=%d', (self.tg_id, self.tcompr_id))
+        r = cur.fetchone()
+        return r[0] if r else None
+
+    def test_group_result(self):
+        cur = self.c.cursor()
+        q = '''INSERT INTO TestGroupsResults
+               (tgrid, tgid, tcomprid, tgResult, cor_tgResult,
+                tc_ok, cor_tc_ok, tc_fail, cor_tc_fail, tc_crash, cor_tc_crash,
+                tc_no, cor_tc_no,
+                ts_ok, cor_ts_ok, ts_fail, cor_ts_fail, ts_crash, cor_ts_crash,
+                ts_no, cor_ts_no,
+                comment, rd_comment, state,
+                cor_ts_exception, cor_ts_blocked, cor_tc_exception,
+                cor_tc_blocked) VALUES
+               (%d, %d, %d, %d, %d,
+                %d, %d, %d, %d, %d, %d, %d, %d,
+                %d, %d, %d, %d, %d, %d, %d, %d,
+                %s, %s, %s,
+                %d, %d, %d, %d)'''
+
+        tgr_id = self.__test_group_result_get(cur)
+        if not tgr_id:
+            cur.execute('SELECT max(tgrid) FROM TestGroupsResults')
+            tgr_id = (cur.fetchone()[0] or 0) + 1
+
+            cur.execute(q, (tgr_id, self.tg_id, self.tcompr_id, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0,
+                            0, 0, 0, 0, 0, 0, 0, 0,
+                            "comm", "cmmrd", "3",
+                            0, 0, 0, 0))
+            self.c.commit()
+        self.tgr_id = tgr_id
+        return tgr_id
+
+    def __test_case_name_get(self, cur, name):
+        cur.execute('SELECT tcnid FROM TestCasesName WHERE tgid=%d AND ' \
+                    'name=%s', (self.tg_id, name))
+        r = cur.fetchone()
+        return r[0] if r else None
+
+    def __test_case_get(self, cur, version):
+        cur.execute('SELECT tcid FROM TestCases WHERE tcnid=%s AND ' \
+                    'version=%s', (self.tcn_id, version))
+        r = cur.fetchone()
+        return r[0] if r else None
+
+    def test_case(self, name, timestamp=datetime.now(), version="0",
+                  author="Unknown", description=""):
+        cur = self.c.cursor()
+        q = 'INSERT INTO TestCasesName (tgid, tcnid, name) VALUES ' \
+            '(%d, %d, %s)'
+
+        tcn_id = self.__test_case_name_get(cur, name)
+        if not tcn_id:
+            cur.execute('SELECT max(tcnid) FROM TestCasesName')
+            tcn_id = (cur.fetchone()[0] or 0) + 1
+
+            cur.execute(q, (self.tg_id, tcn_id, name))
+            self.c.commit()
+        self.tcn_id = tcn_id
+
+        q = 'INSERT INTO TestCases (tcnid, tcid, date, version, ssver, ' \
+            'name, author, testDescription) VALUES ' \
+            '(%d, %d, %s, %s, %d, %s, %s, %d)'
+
+        tc_id = self.__test_case_get(cur, version)
+        if not tc_id:
+            cur.execute('SELECT max(tcid) FROM TestCases')
+            tc_id = (cur.fetchone()[0] or 0) + 1
+
+            cur.execute(q, (self.tcn_id, tc_id, timestamp, version, 0, name,
+                            author, description))
+            self.c.commit()
+        self.tc_id = tc_id
+
+        return tcn_id, tc_id
+
+    def test_case_result(self, result, start_time="", stop_time=""):
+        cur = self.c.cursor()
+
+        q = '''INSERT INTO TestCasesResults
+               (tcnid, ssver, tgrid, tcrid, os,
+                name, author, changedate, version, startTime, stopTime,
+                tcResult, cor_tcResult,
+                ts_ok, cor_ts_ok, ts_fail, cor_ts_fail, ts_crash, cor_ts_crash,
+                ts_no, cor_ts_no,
+                comment, rd_comment, state, cor_ts_exception, cor_ts_blocked)
+               VALUES (%d, %d, %d, %d, %s,
+                       %s, %s, %s, %s, %s, %s,
+                       %d, %d,
+                       %d, %d, %d, %d, %d, %d, %d, %d,
+                       %s, %s, %s, %d, %d)'''
+
+        cur.execute('SELECT max(tcrid) FROM TestCasesResults')
+        tcr_id = (cur.fetchone()[0] or 0) + 1
+
+        cur.execute(q, (self.tcn_id, 0, self.tgr_id, tcr_id, "myOS",
+                        "", "", "", "", start_time, stop_time,
+                        result, result,
+                        0, 0, 0, 0, 0, 0, 0, 0,
+                        "r comment", "r comment rd", "3", 0, 0))
+
+        q = '''INSERT INTO TestCasesResultDescription
+               (tcrid, filePath, name, author, changedate, version,
+                time, runTime, preparation, totalTime,
+                software, hardware, descriptionValue) VALUES
+               (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
+
+        cur.execute(q, (tcr_id, "", "name from descr", "", "", "",
+                        "", "", "", "",
+                        "", "", ""))
+        self.c.commit()
+
+    def test_step(self, title):
+        cur = self.c.cursor()
+
+        q = '''INSERT INTO TestSteps
+               (pos, tcid, type, image, logText,
+                id, title, stopOnFail, value, wait) VALUES
+               (%d, %d, %s, %s, %s, %s, %s, %s, %s, %s)'''
+
+        cur.execute('SELECT max(pos) FROM TestSteps WHERE tcid=%d', self.tc_id)
+        ts_pos = (cur.fetchone()[0] or 0) + 1
+
+        cur.execute(q, (ts_pos, self.tc_id, "type", "", "logTEXT",
+                        ts_pos, title, "", "value", ""))
+        self.c.commit()
+        self.ts_pos = ts_pos
+        return ts_pos
+
+    def test_step_result(self, result, timestamp=datetime.now()):
+        cur = self.c.cursor()
+
+        q = '''INSERT INTO TestStepsResults
+               (pos, tcrid, tcid, ts_pos, logText, result, cor_result,
+                id, time, comment, rd_comment, tc_comment, g_comment,
+                traceback, state, stepValue, type) VALUES
+               (%d, %d, %d, %d, %s, %d, %d,
+                %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s)'''
+
+        cur.execute(q, (self.ts_pos, self.tcr_id, self.tc_id, str(self.ts_pos),
+                        "logtext", result, result, str(self.ts_pos),
+                        timestamp, "comm", "rd_comment", "tc_comment",
+                        "g_comment", "traceback", "state", "stepValue",
+                        "type"))
+        self.c.commit()
+        return self.ts_pos
 
 
 if __name__ == '__main__':
@@ -257,6 +431,16 @@ if __name__ == '__main__':
     db.clear()
     db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
     print db.label("HELLOTEST_17_04_2013")
-    print db.label("HELLOTEST_17_04_2013")
-    print db.label("HELLOTEST_17_04_2013")
+    # print db.label("HELLOTEST_17_04_2013")
+    # print db.label("HELLOTEST_17_04_2013")
     print db.components_result()
+    print db.test_group('YOYOYO')
+    print db.test_group('YOYOYO')
+    print db.test_group('YOYOYO2')
+    print db.test_group_result()
+    print db.test_case('my tc', author='me')
+    print db.test_case('my tc')
+    print db.test_case('my tc2')
+    print db.test_case_result(0)
+    print db.test_step("my test step!")
+    print db.test_step_result(1)
