@@ -398,7 +398,7 @@ class SQSDatabase:
         self.c.commit()
         return self.ts_pos
 
-    def test_step_result(self, result, timestamp=datetime.now()):
+    def test_step_result(self, result, timestamp=datetime.now(), text=""):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestStepsResults
@@ -410,10 +410,8 @@ class SQSDatabase:
                 %s, %s, %s, %s)'''
 
         cur.execute(q, (self.ts_pos, self.tcr_id, self.tc_id, str(self.ts_pos),
-                        "logtext", result, result, str(self.ts_pos),
-                        timestamp, "comm", "rd_comment", "tc_comment",
-                        "g_comment", "traceback", "state", "stepValue",
-                        "type"))
+                        text, result, result, str(self.ts_pos),
+                        timestamp, "", "", "", "", "", "", "", ""))
         self.c.commit()
         return self.ts_pos
 
@@ -422,14 +420,32 @@ if __name__ == '__main__':
     data = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db = SQSDatabase(*data)
     db.clear()
-    db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
-    print db.label("HELLOTEST_17_04_2013")
+    # db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
     # print db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
-    print db.components_result()
-    print db.test_group('YOYOYO')
-    print db.test_group_result()
-    print db.test_case('my tc', author='me')
-    print db.test_case_result(0)
-    print db.test_step("my test step!")
-    print db.test_step_result(0)
+    # print db.label("HELLOTEST_17_04_2013")
+    # print db.components_result()
+    # print db.test_group('YOYOYO')
+    # print db.test_group_result()
+    # print db.test_case('my tc', author='me')
+    # print db.test_case_result(0)
+    # print db.test_step("my test step!")
+    # print db.test_step_result(2)
+
+    from test_result_parser import RTITEResult
+    result_path = 'R:\\PE\\Testdata\\CRTI-Test\\ImplSW_RLS_2013-A\\RTIxxxMM' \
+                  '\\Res\\INT17\\T_01\\ts_results_rti1005.mat'
+    result = RTITEResult(result_path)
+    print result
+    print result.time
+    print result.description
+    print result.tags
+    # print dir(result)
+
+    for s in result.sequences:
+        if s.state == "Fail":
+            print s,
+            print s.end - s.start
+            #pprint(s.log)
+            #pprint(s.errors)
+
