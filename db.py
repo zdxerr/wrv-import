@@ -186,25 +186,20 @@ class SQSDatabase:
 
     def label(self, label, timestamp=datetime.now()):
         cur = self.c.cursor()
-
-        label_id = self.__label_get(cur, label)
-        if label_id:
-            return label_id
-
         q = 'INSERT INTO LabelIDNames (labelid, sslabel, display_label, ' \
             'Date, OfficialLabel) OUTPUT INSERTED.labelid ' \
-            'SELECT ISNULL(MAX(labelid), 0) + 1, %s, %s, %s, 0 FROM LabelIDNames '
+            'SELECT ISNULL(MAX(labelid), 0) + 1, %s, %s, %s, 0 '\
+            'FROM LabelIDNames'
 
-        cur.execute(q, (label, label, str(timestamp)))
-        self.label_id = cur.fetchone()[0]
-        self.c.commit()
+        self.label_id = self.__label_get(cur, label)
+        if not self.label_id:
+            cur.execute(q, (label, label, str(timestamp)))
+            self.label_id = cur.fetchone()[0]
+            self.c.commit()
         return self.label_id
 
     def components_result(self):
         cur = self.c.cursor()
-
-        cur.execute('SELECT max(tcomprid) FROM TestComponentsResults')
-        tcompr_id = (cur.fetchone()[0] or 0) + 1
 
         q = '''INSERT INTO TestComponentsResults
                (prtcid, tlid1, tlid2, labelid, os, tcomprid,
@@ -220,19 +215,20 @@ class SQSDatabase:
                 TestCandidateDate, PlatformWhileTestExec, InterfaceToPlatform,
                 RemarksToTestExec, StatusOfTestExec, state, invisible,
                 cor_ts_exception, cor_ts_blocked, cor_tc_exception,
-                cor_tc_blocked, cor_tg_exception, cor_tg_blocked) VALUES
-               (%d, %d, %d, %d, %s, %d,
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0,
+                cor_tc_blocked, cor_tg_exception, cor_tg_blocked)
+               OUTPUT INSERTED.tcomprid
+               SELECT %d, %d, %d, %d, %s, ISNULL(MAX(tcomprid), 0) + 1,
+                3, 4, 3, 4, 3, 4, 3, 4,
+                3, 4, 3, 4, 3, 4, 3, 4,
                 0, 0, 0, 0, 0, 0, 0, 0,
                 %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, 0,
-                0, 0, 0, 0, 0, 0)'''
+                0, 0, 0, 0, 0, 0 FROM TestComponentsResults'''
 
         cur.execute(q, (self.parrent, self.tlid1, self.tlid2, self.label_id,
-                        "OS", tcompr_id,
+                        "OS",
                         "kommentar", "kommentar rd",
                         # "October 19, 1962 4:35:47 PM",
                         "100000",
@@ -241,12 +237,10 @@ class SQSDatabase:
                         "TestCandidateBuildNumber",
                         "TestCandidateSpecialBuild",
                         "October 19, 1962", "PlatformWhileTestExec",
-                        "InterfaceToPlatform", "RemarksToTestExec", "0", "0"
-
-                        ))
+                        "InterfaceToPlatform", "RemarksToTestExec", "0", "0"))
+        self.tcompr_id = cur.fetchone()[0]
         self.c.commit()
-        self.tcompr_id = tcompr_id
-        return tcompr_id
+        return self.tcompr_id
 
     def __test_group_get(self, cur, name):
         cur.execute('SELECT tgid FROM TestGroups WHERE prtcid=%d AND ' \
@@ -258,17 +252,19 @@ class SQSDatabase:
     def test_group(self, name):
         cur = self.c.cursor()
 
-        tg_id = self.__test_group_get(cur, name)
-        if not tg_id:
+        q = '''INSERT INTO TestGroups (prtcid, tlid1, tlid2, tgid, name)
+            OUTPUT INSERTED.tgid
+            SELECT %d, %d, %d, ISNULL(MAX(tgid), 0) + 1, %s FROM TestGroups'''
+
+        self.tg_id = self.__test_group_get(cur, name)
+        if not self.tg_id:
             cur.execute('SELECT max(tgid) FROM TestGroups')
             tg_id = (cur.fetchone()[0] or 0) + 1
 
-            cur.execute('INSERT INTO TestGroups (prtcid, tlid1, tlid2, tgid,' \
-                        'name) VALUES (%d, %d, %d, %d, %s)',
-                        (self.parrent, self.tlid1, self.tlid2, tg_id, name))
+            cur.execute(q, (self.parrent, self.tlid1, self.tlid2, name))
+            self.tg_id = cur.fetchone()[0]
             self.c.commit()
-        self.tg_id = tg_id
-        return tg_id
+        return self.tg_id
 
     def __test_group_result_get(self, cur):
         cur.execute('SELECT tgrid FROM TestGroupsResults WHERE tgid=%d AND ' \
@@ -286,26 +282,24 @@ class SQSDatabase:
                 ts_no, cor_ts_no,
                 comment, rd_comment, state,
                 cor_ts_exception, cor_ts_blocked, cor_tc_exception,
-                cor_tc_blocked) VALUES
-               (%d, %d, %d, %d, %d,
+                cor_tc_blocked)
+               OUTPUT INSERTED.tgrid
+               SELECT ISNULL(MAX(tgrid), 0) + 1, %d, %d, %d, %d,
                 %d, %d, %d, %d, %d, %d, %d, %d,
                 %d, %d, %d, %d, %d, %d, %d, %d,
                 %s, %s, %s,
-                %d, %d, %d, %d)'''
+                %d, %d, %d, %d FROM TestGroupsResults'''
 
-        tgr_id = self.__test_group_result_get(cur)
-        if not tgr_id:
-            cur.execute('SELECT max(tgrid) FROM TestGroupsResults')
-            tgr_id = (cur.fetchone()[0] or 0) + 1
-
-            cur.execute(q, (tgr_id, self.tg_id, self.tcompr_id, 0, 0,
+        self.tgr_id = self.__test_group_result_get(cur)
+        if not self.tgr_id:
+            cur.execute(q, (self.tg_id, self.tcompr_id, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
                             "comm", "cmmrd", "3",
                             0, 0, 0, 0))
+            self.tgr_id = cur.fetchone()[0]
             self.c.commit()
-        self.tgr_id = tgr_id
-        return tgr_id
+        return self.tgr_id
 
     def __test_case_name_get(self, cur, name):
         cur.execute('SELECT tcnid FROM TestCasesName WHERE tgid=%d AND ' \
@@ -322,33 +316,28 @@ class SQSDatabase:
     def test_case(self, name, timestamp=datetime.now(), version="0",
                   author="Unknown", description=""):
         cur = self.c.cursor()
-        q = 'INSERT INTO TestCasesName (tgid, tcnid, name) VALUES ' \
-            '(%d, %d, %s)'
+        q = '''INSERT INTO TestCasesName (tgid, tcnid, name)
+               OUTPUT INSERTED.tcnid
+               SELECT %d, ISNULL(MAX(tcnid), 0) + 1, %s FROM TestCasesName'''
 
-        tcn_id = self.__test_case_name_get(cur, name)
-        if not tcn_id:
-            cur.execute('SELECT max(tcnid) FROM TestCasesName')
-            tcn_id = (cur.fetchone()[0] or 0) + 1
+        self.tcn_id = self.__test_case_name_get(cur, name)
+        if not self.tcn_id:
+            cur.execute(q, (self.tg_id, name))
+            self.tcn_id = cur.fetchone()[0]
 
-            cur.execute(q, (self.tg_id, tcn_id, name))
-            self.c.commit()
-        self.tcn_id = tcn_id
+        q = '''INSERT INTO TestCases (tcnid, tcid, date, version, ssver, name,
+                author, testDescription) OUTPUT INSERTED.tcid
+               SELECT %d, ISNULL(MAX(tcid), 0) + 1, %s, %s, %d, %s, %s, %d
+               FROM TestCases'''
 
-        q = 'INSERT INTO TestCases (tcnid, tcid, date, version, ssver, ' \
-            'name, author, testDescription) VALUES ' \
-            '(%d, %d, %s, %s, %d, %s, %s, %d)'
+        self.tc_id = self.__test_case_get(cur, version)
+        if not self.tc_id:
+            cur.execute(q, (self.tcn_id, timestamp, version, 0, name, author,
+                            description))
+            self.tc_id = cur.fetchone()[0]
 
-        tc_id = self.__test_case_get(cur, version)
-        if not tc_id:
-            cur.execute('SELECT max(tcid) FROM TestCases')
-            tc_id = (cur.fetchone()[0] or 0) + 1
-
-            cur.execute(q, (self.tcn_id, tc_id, timestamp, version, 0, name,
-                            author, description))
-            self.c.commit()
-        self.tc_id = tc_id
-
-        return tcn_id, tc_id
+        self.c.commit()
+        return self.tcn_id, self.tc_id
 
     def test_case_result(self, result, start_time="", stop_time=""):
         cur = self.c.cursor()
@@ -364,21 +353,20 @@ class SQSDatabase:
                 ts_ok, cor_ts_ok, ts_fail, cor_ts_fail, ts_crash, cor_ts_crash,
                 ts_no, cor_ts_no,
                 comment, rd_comment, state, cor_ts_exception, cor_ts_blocked)
-               VALUES (%d, %d, %d, %d, %s,
+               OUTPUT INSERTED.tcrid
+               SELECT %d, %d, %d, ISNULL(MAX(tcrid), 0) + 1, %s,
                        %s, %s, %s, %s, %s, %s,
                        %d, %d,
                        %d, %d, %d, %d, %d, %d, %d, %d,
-                       %s, %s, %s, %d, %d)'''
+                       %s, %s, %s, %d, %d FROM TestCasesResults'''
 
-        cur.execute('SELECT max(tcrid) FROM TestCasesResults')
-        tcr_id = (cur.fetchone()[0] or 0) + 1
-
-        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, tcr_id, "myOS",
+        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, "myOS",
                         name, author, changedate, version,
                         start_time, stop_time,
                         result, result,
                         0, 0, 0, 0, 0, 0, 0, 0,
                         "r comment", "r comment rd", "3", 0, 0))
+        self.tcr_id = cur.fetchone()[0]
 
         # not visible in the wrv?
         q = '''INSERT INTO TestCasesResultDescription
@@ -387,29 +375,28 @@ class SQSDatabase:
                 software, hardware, descriptionValue) VALUES
                (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
 
-        cur.execute(q, (tcr_id, "", "", "", "", "",
+        cur.execute(q, (self.tcr_id, "", "", "", "", "",
                         "", "", "", "",
                         "", "", ""))
         self.c.commit()
-        self.tcr_id = tcr_id
-        return tcr_id
+        return self.tcr_id
 
     def test_step(self, title):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestSteps
                (pos, tcid, type, image, logText,
-                id, title, stopOnFail, value, wait) VALUES
-               (%d, %d, %s, %s, %s, %s, %s, %s, %s, %s)'''
+                id, title, stopOnFail, value, wait)
+               OUTPUT INSERTED.pos
+               SELECT ISNULL(MAX(pos), 0) + 1, %d, %s, %s, %s,
+                STR(ISNULL(MAX(pos), 0) + 1), %s, %s, %s,
+                %s FROM TestSteps WHERE tcid=%d'''
 
-        cur.execute('SELECT max(pos) FROM TestSteps WHERE tcid=%d', self.tc_id)
-        ts_pos = (cur.fetchone()[0] or 0) + 1
-
-        cur.execute(q, (ts_pos, self.tc_id, "type", "", "logTEXT",
-                        ts_pos, title, "", "value", ""))
+        cur.execute(q, (self.tc_id, "type", "", "logTEXT",
+                        title, "", "value", "", self.tc_id))
+        self.ts_pos = cur.fetchone()[0]
         self.c.commit()
-        self.ts_pos = ts_pos
-        return ts_pos
+        return self.ts_pos
 
     def test_step_result(self, result, timestamp=datetime.now()):
         cur = self.c.cursor()
