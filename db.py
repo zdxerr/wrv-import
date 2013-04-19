@@ -191,16 +191,14 @@ class SQSDatabase:
         if label_id:
             return label_id
 
-        cur.execute('SELECT max(labelid) FROM LabelIDNames')
-        label_id = (cur.fetchone()[0] or 0) + 1
-
         q = 'INSERT INTO LabelIDNames (labelid, sslabel, display_label, ' \
-            'Date, OfficialLabel) VALUES (%d, %s, %s, %s, 0);'
+            'Date, OfficialLabel) OUTPUT INSERTED.labelid ' \
+            'SELECT ISNULL(MAX(labelid), 0) + 1, %s, %s, %s, 0 FROM LabelIDNames '
 
-        cur.execute(q, (label_id, label, label, timestamp))
+        cur.execute(q, (label, label, str(timestamp)))
+        self.label_id = cur.fetchone()[0]
         self.c.commit()
-        self.label_id = label_id
-        return label_id
+        return self.label_id
 
     def components_result(self):
         cur = self.c.cursor()
@@ -224,9 +222,9 @@ class SQSDatabase:
                 cor_ts_exception, cor_ts_blocked, cor_tc_exception,
                 cor_tc_blocked, cor_tg_exception, cor_tg_blocked) VALUES
                (%d, %d, %d, %d, %s, %d,
-                1, 2, 3, 4, 5, 6, 7, 8,
-                1, 2, 3, 4, 5, 6, 7, 8,
-                1, 2, 3, 4, 5, 6, 7, 8,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
                 %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s, %s,
@@ -355,6 +353,10 @@ class SQSDatabase:
     def test_case_result(self, result, start_time="", stop_time=""):
         cur = self.c.cursor()
 
+        cur.execute('SELECT name, author, date, version, ssver ' \
+                    'FROM TestCases WHERE tcid=%d', (self.tc_id, ))
+        name, author, changedate, version, ssver = cur.fetchone()
+
         q = '''INSERT INTO TestCasesResults
                (tcnid, ssver, tgrid, tcrid, os,
                 name, author, changedate, version, startTime, stopTime,
@@ -371,22 +373,26 @@ class SQSDatabase:
         cur.execute('SELECT max(tcrid) FROM TestCasesResults')
         tcr_id = (cur.fetchone()[0] or 0) + 1
 
-        cur.execute(q, (self.tcn_id, 0, self.tgr_id, tcr_id, "myOS",
-                        "", "", "", "", start_time, stop_time,
+        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, tcr_id, "myOS",
+                        name, author, changedate, version,
+                        start_time, stop_time,
                         result, result,
                         0, 0, 0, 0, 0, 0, 0, 0,
                         "r comment", "r comment rd", "3", 0, 0))
 
+        # not visible in the wrv?
         q = '''INSERT INTO TestCasesResultDescription
                (tcrid, filePath, name, author, changedate, version,
                 time, runTime, preparation, totalTime,
                 software, hardware, descriptionValue) VALUES
                (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
 
-        cur.execute(q, (tcr_id, "", "name from descr", "", "", "",
+        cur.execute(q, (tcr_id, "", "", "", "", "",
                         "", "", "", "",
                         "", "", ""))
         self.c.commit()
+        self.tcr_id = tcr_id
+        return tcr_id
 
     def test_step(self, title):
         cur = self.c.cursor()
@@ -435,12 +441,8 @@ if __name__ == '__main__':
     # print db.label("HELLOTEST_17_04_2013")
     print db.components_result()
     print db.test_group('YOYOYO')
-    print db.test_group('YOYOYO')
-    print db.test_group('YOYOYO2')
     print db.test_group_result()
     print db.test_case('my tc', author='me')
-    print db.test_case('my tc')
-    print db.test_case('my tc2')
     print db.test_case_result(0)
     print db.test_step("my test step!")
-    print db.test_step_result(1)
+    print db.test_step_result(0)

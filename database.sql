@@ -45,4 +45,19 @@ INSERT INTO TestSteps (pos, tcid, type, image, logText, id, title, stopOnFail, v
 INSERT INTO TestStepsResults (pos, tcrid, tcid, ts_pos, logText, result, cor_result, id, time, comment, rd_comment, tc_comment, g_comment, traceback, state, stepValue, type) VALUES (1, 1, 1, 1, "Beschreibung des resultats", 1, 1, "1", "2013/01/11 11:11:11.111", "c1", "c2", "c3", "c4", "traceback", 1, 0, "type");
 
 
+# alter database
 
+select * from INFORMATION_SCHEMA.COLUMNS where TABLE_NAME='LabelIDNames'
+
+ALTER TABLE LabelIDNames ALTER COLUMN labelid int PRIMARY KEY IDENTITY
+
+DROP TABLE LabelIDNames;
+
+CREATE TABLE LabelIDNames
+(
+   labelid  int IDENTITY(1,1) PRIMARY KEY,
+   sslabel varchar(60),
+   display_label varchar(60),
+   Date varchar(60),
+   OfficialLabel bit
+)
