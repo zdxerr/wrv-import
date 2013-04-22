@@ -4,7 +4,7 @@ Remove all contents from a SQS-Databes and create new path roots.
 """
 
 from datetime import datetime
-
+import time
 import pymssql
 
 class SQSDatabase:
@@ -198,7 +198,7 @@ class SQSDatabase:
             self.c.commit()
         return self.label_id
 
-    def components_result(self):
+    def component_result(self, timestamp=datetime.now()):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestComponentsResults
@@ -218,8 +218,8 @@ class SQSDatabase:
                 cor_tc_blocked, cor_tg_exception, cor_tg_blocked)
                OUTPUT INSERTED.tcomprid
                SELECT %d, %d, %d, %d, %s, ISNULL(MAX(tcomprid), 0) + 1,
-                3, 4, 3, 4, 3, 4, 3, 4,
-                3, 4, 3, 4, 3, 4, 3, 4,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
                 %s, %s, %s,
                 %s, %s, %s,
@@ -231,7 +231,7 @@ class SQSDatabase:
                         "OS",
                         "kommentar", "kommentar rd",
                         # "October 19, 1962 4:35:47 PM",
-                        "100000",
+                        time.mktime(timestamp.timetuple()),
                         "TESTPC", "OSWhileTestExec", "CHristophS",
                         "TestCandidateVersion", "TestCandidateBuildType",
                         "TestCandidateBuildNumber",
@@ -378,8 +378,33 @@ class SQSDatabase:
         cur.execute(q, (self.tcr_id, "", "", "", "", "",
                         "", "", "", "",
                         "", "", ""))
+
+        result_colums = {0: 'tc_ok', 1: 'tc_fail', -1: 'tc_no'}
+        q = '''UPDATE TestGroupsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
+               WHERE tgrid=%d'''.format(c=result_colums[result])
+        cur.execute(q, self.tgr_id)
+
+        result_colums = {0: 'tc_ok', 1: 'tc_fail', -1: 'tc_no'}
+        q = '''UPDATE TestComponentsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
+               WHERE tcomprid=%d'''.format(c=result_colums[result])
+        cur.execute(q, self.tcompr_id)
+
         self.c.commit()
         return self.tcr_id
+
+    def test_case_result_file(self, name, content):
+        cur = self.c.cursor()
+
+        q = '''INSERT INTO TestCasesResultDBFiles
+               (fileId, fileType, fileSize, fileNameOrig, fileContent,
+                fileContentBig, tcrid)
+               OUTPUT INSERTED.fileID
+               SELECT ISNULL(MAX(fileId), 0) + 1, %s, %d, %s, %s, %d, %d
+               FROM TestCasesResultDBFiles'''
+
+        cur.execute(q, ('txt', len(content), name, content, 0, self.tcr_id))
+        self.tcrf_id = cur.fetchone()[0]
+        self.c.commit()
 
     def test_step(self, title):
         cur = self.c.cursor()
@@ -412,6 +437,20 @@ class SQSDatabase:
         cur.execute(q, (self.ts_pos, self.tcr_id, self.tc_id, str(self.ts_pos),
                         text, result, result, str(self.ts_pos),
                         timestamp, "", "", "", "", "", "", "", ""))
+
+        result_colums = {0: 'ts_ok', 1: 'ts_fail', -1: 'ts_no'}
+        q = '''UPDATE TestCasesResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
+               WHERE tcrid=%d'''.format(c=result_colums[result])
+        cur.execute(q, self.tcr_id)
+
+        q = '''UPDATE TestGroupsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
+               WHERE tgrid=%d'''.format(c=result_colums[result])
+        cur.execute(q, self.tgr_id)
+
+        q = '''UPDATE TestComponentsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
+               WHERE tcomprid=%d'''.format(c=result_colums[result])
+        cur.execute(q, self.tcompr_id)
+
         self.c.commit()
         return self.ts_pos
 
@@ -424,7 +463,7 @@ if __name__ == '__main__':
     # print db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
-    # print db.components_result()
+    # print db.component_result()
     # print db.test_group('YOYOYO')
     # print db.test_group_result()
     # print db.test_case('my tc', author='me')
@@ -433,19 +472,51 @@ if __name__ == '__main__':
     # print db.test_step_result(2)
 
     from test_result_parser import RTITEResult
+    import find_results
     result_path = 'R:\\PE\\Testdata\\CRTI-Test\\ImplSW_RLS_2013-A\\RTIxxxMM' \
                   '\\Res\\INT17\\T_01\\ts_results_rti1005.mat'
-    result = RTITEResult(result_path)
-    print result
-    print result.time
-    print result.description
-    print result.tags
-    # print dir(result)
+    # result = RTITEResult(result_path)
 
-    for s in result.sequences:
-        if s.state == "Fail":
-            print s,
-            print s.end - s.start
-            #pprint(s.log)
-            #pprint(s.errors)
+    result_path = r"R:\PE\Testdata\CRTI-Test\ImplSW_RLS_2013-A"
+    for n, path in enumerate(find_results.results(result_path, 'rtite')):
+        start = time.time()
+        try:
+            result = RTITEResult(path)
+            print "{:8d} {!s:<140} {!s:>20}".format(n, result.path, result.time),
+
+            ignore_tags = ('Res', 'RTIxxxMM', 'RTIFlexRay', 'ts_results', 'rti')
+            db.label(' '.join(t for t in result.tags if not t.startswith(ignore_tags)))
+
+            db.path([t for t in result.tags if t.lower().startswith('rti')])
+
+            db.component_result()
+            # print result.description
+            # print result.tags
+            # print dir(result)
+
+            for s in result.sequences:
+                # print s
+                # pprint(s.log)
+                db.test_group(s.id.split('\\', 1)[0])
+                db.test_group_result()
+                db.test_case(s.id, description=s.comment)
+                possible_results = {'Ok': 0, 'Fail': 1, 'Not Executed': -1,
+                                    'Excluded': -1}
+                db.test_case_result(possible_results[s.state], start_time=s.start,
+                                    stop_time=s.end)
+
+                for n, l in enumerate(s.log, 1):
+                    db.test_step("Stage {}".format(n))
+                    db.test_case_result_file("Stage{}.txt".format(n), l)
+                    db.test_step_result(1 if s.teststage_failed == n else 0,
+                                        timestamp=s.start, text=l)
+                # if s.state == "Fail":
+                #     print s,
+                #     print s.end - s.start
+                #     #pprint(s.log)
+                #     #pprint(s.errors)
+            state = 'OK'
+        except:
+            state = 'OK'
+        print "{!s:>10} - {:12.2f} seconds".format(state, time.time() - start)
 
