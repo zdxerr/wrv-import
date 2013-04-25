@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import re
+
 import requests
 
 from test_result_parser import RTITEResult
@@ -32,11 +34,11 @@ def create_sequence(name, tags=[]):
         print 'OK'
         create_sequence.count += 1
     elif r.status_code == 409:
-        print 'EXISTS'
+        print 'EXISTS',
         r = requests.get('{}/{}/'.format(URL, 'sequence'), params={'q': name})
         assert(r.ok)
     else:
-        print 'ERROR', r.status_code, r.json
+        print 'ERROR', r.status_code, r.text
         return None
     return r.json['id']
 
@@ -68,8 +70,8 @@ def main():
         print n, result
         run_id = create_run(result.time)
         for sequence in result.sequences:
-            # print " "*3, sequence
-            sequence_id = create_sequence(sequence.id)
+            sequence_id = create_sequence(sequence.id,
+                                          re.split(r'\W+', sequence.id))
             create_result(run_id, sequence_id, sequence.start, sequence.state)
             for l in sequence.log:
                 create_log(run_id, sequence_id, sequence.start, l)
@@ -78,7 +80,7 @@ def main():
 if __name__ == '__main__':
     reset()
     main()
-    timeit.show(False)
+    # timeit.show(False)
     timeit.average()
     print create_sequence.count
 

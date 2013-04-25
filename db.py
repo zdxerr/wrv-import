@@ -61,13 +61,26 @@ class SQSDatabase:
             table = tables.pop(0)
             print "Trying to delete contents of table %r:" % (table, ),
             try:
-                cur.execute('DELETE FROM '+ table)
+                # cur.execute('ALTER TABLE ' + table + ' NOCHECK CONSTRAINT ALL')
+                # cur.execute('ALTER TABLE ' + table + ' DISABLE TRIGGER ALL')
+                cur.execute('DELETE '+ table)
+                # cur.execute('TRUNCATE TABLE ' + table)
                 self.c.commit()
             except Exception, exc:
                 print "FAILED", exc
-                tables.append(table)
+                try:
+                    print "Trying to truncate contents of table %r:" % (table, ),
+                    cur.execute('TRUNCATE TABLE ' + table)
+                except Exception, exc:
+                    print "FAILED", exc
+                    tables.append(table)
+                else:
+                    print "OK"
             else:
                 print "OK"
+            # finally:
+                # cur.execute('ALTER TABLE ' + table + ' CHECK CONSTRAINT ALL')
+                # cur.execute('ALTER TABLE ' + table + ' ENABLE TRIGGER ALL')
 
     def __node_set_leaf(self, cur, path_str, leaf=True):
         """
@@ -198,7 +211,11 @@ class SQSDatabase:
             self.c.commit()
         return self.label_id
 
-    def component_result(self, timestamp=datetime.now()):
+    def component_result(self, timestamp=datetime.now(), executed_by="",
+                         os=["Unknown", "", "", ""], pc="Unknown",
+                         candidate=["Unknown", "Unknown", "Unknown", "Unknown",
+                         "Unknown"], platform="Unknown", interface="Unknown",
+                         remarks="None"):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestComponentsResults
@@ -227,17 +244,17 @@ class SQSDatabase:
                 %s, %s, %s, %s, %s, %s, 0,
                 0, 0, 0, 0, 0, 0 FROM TestComponentsResults'''
 
-        cur.execute(q, (self.parrent, self.tlid1, self.tlid2, self.label_id,
-                        "OS",
-                        "kommentar", "kommentar rd",
-                        # "October 19, 1962 4:35:47 PM",
-                        time.mktime(timestamp.timetuple()),
-                        "TESTPC", "OSWhileTestExec", "CHristophS",
-                        "TestCandidateVersion", "TestCandidateBuildType",
-                        "TestCandidateBuildNumber",
-                        "TestCandidateSpecialBuild",
-                        "October 19, 1962", "PlatformWhileTestExec",
-                        "InterfaceToPlatform", "RemarksToTestExec", "0", "0"))
+        # print time.mktime(timestamp.timetuple())
+
+        params = [self.parrent, self.tlid1, self.tlid2, self.label_id,
+                  os[0], "", "",
+                  # "October 19, 1962 4:35:47 PM",
+                  time.mktime(timestamp.timetuple()),
+                  pc, '{} {} ({}) {}bit'.format(*os), executed_by] + \
+                  candidate + \
+                  [platform, interface, remarks, "0", "0"]
+
+        cur.execute(q, tuple(params))
         self.tcompr_id = cur.fetchone()[0]
         self.c.commit()
         return self.tcompr_id
@@ -295,7 +312,7 @@ class SQSDatabase:
             cur.execute(q, (self.tg_id, self.tcompr_id, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
-                            "comm", "cmmrd", "3",
+                            "", "", "",
                             0, 0, 0, 0))
             self.tgr_id = cur.fetchone()[0]
             self.c.commit()
@@ -339,7 +356,7 @@ class SQSDatabase:
         self.c.commit()
         return self.tcn_id, self.tc_id
 
-    def test_case_result(self, result, start_time="", stop_time=""):
+    def test_case_result(self, result, start_time="", stop_time="", os=""):
         cur = self.c.cursor()
 
         cur.execute('SELECT name, author, date, version, ssver ' \
@@ -360,12 +377,12 @@ class SQSDatabase:
                        %d, %d, %d, %d, %d, %d, %d, %d,
                        %s, %s, %s, %d, %d FROM TestCasesResults'''
 
-        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, "myOS",
+        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, os,
                         name, author, changedate, version,
                         start_time, stop_time,
                         result, result,
                         0, 0, 0, 0, 0, 0, 0, 0,
-                        "r comment", "r comment rd", "3", 0, 0))
+                        "", "", "", 0, 0))
         self.tcr_id = cur.fetchone()[0]
 
         # not visible in the wrv?
@@ -459,6 +476,7 @@ if __name__ == '__main__':
     data = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db = SQSDatabase(*data)
     db.clear()
+    # exit()
     # db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
     # print db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
@@ -477,7 +495,7 @@ if __name__ == '__main__':
                   '\\Res\\INT17\\T_01\\ts_results_rti1005.mat'
     # result = RTITEResult(result_path)
 
-    result_path = r"R:\PE\Testdata\CRTI-Test\ImplSW_RLS_2013-A"
+    result_path = r"R:\PE\Testdata\CRTI-Test\ImplSW_RLS_2013-A\RTIFlexRay"
     for n, path in enumerate(find_results.results(result_path, 'rtite')):
         start = time.time()
         try:
@@ -486,13 +504,10 @@ if __name__ == '__main__':
 
             ignore_tags = ('Res', 'RTIxxxMM', 'RTIFlexRay', 'ts_results', 'rti')
             db.label(' '.join(t for t in result.tags if not t.startswith(ignore_tags)))
-
             db.path([t for t in result.tags if t.lower().startswith('rti')])
 
-            db.component_result()
-            # print result.description
-            # print result.tags
-            # print dir(result)
+            db.component_result(executed_by="Regression Test", os=result.os,
+                                pc=result.pc, platform=result.platform)
 
             for s in result.sequences:
                 # print s
@@ -507,16 +522,13 @@ if __name__ == '__main__':
 
                 for n, l in enumerate(s.log, 1):
                     db.test_step("Stage {}".format(n))
-                    db.test_case_result_file("Stage{}.txt".format(n), l)
+                    # db.test_case_result_file("Stage{}.txt".format(n), l)
                     db.test_step_result(1 if s.teststage_failed == n else 0,
                                         timestamp=s.start, text=l)
-                # if s.state == "Fail":
-                #     print s,
-                #     print s.end - s.start
-                #     #pprint(s.log)
-                #     #pprint(s.errors)
+
             state = 'OK'
-        except:
-            state = 'OK'
-        print "{!s:>10} - {:12.2f} seconds".format(state, time.time() - start)
+        except Exception, exc:
+            state = 'EXCEPT'
+            print exc
+        print "{!s:>10} {:10.2f} sec".format(state, time.time() - start)
 
