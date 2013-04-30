@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Remove all contents from a SQS-Databes and create new path roots.
+Remove all contents from a SQS-Database and create new path roots.
 """
 
 from datetime import datetime
@@ -36,6 +36,7 @@ class SQSDatabase:
         # keep user settings for now
         # 'user_settings',
     ]
+
     def __init__(self, host, user, password, database):
         print "Connecting to %s:" % (host, ),
         try:
@@ -179,6 +180,10 @@ class SQSDatabase:
         return self.__node_get(cur, path_str)
 
     def path(self, path):
+        """
+        Insert a path, create all nodes that do not exist and set leaf property
+        of the last node.
+        """
         if isinstance(path, basestring):
             path = path.strip('/').split('/')
         if not isinstance(path, list):
@@ -198,6 +203,9 @@ class SQSDatabase:
         return r[0] if r else None
 
     def label(self, label, timestamp=datetime.now()):
+        """
+        Create a label if it does not exist and return its id.
+        """
         cur = self.c.cursor()
         q = 'INSERT INTO LabelIDNames (labelid, sslabel, display_label, ' \
             'Date, OfficialLabel) OUTPUT INSERTED.labelid ' \
@@ -216,6 +224,9 @@ class SQSDatabase:
                          candidate=["Unknown", "Unknown", "Unknown", "Unknown",
                          "Unknown"], platform="Unknown", interface="Unknown",
                          remarks="None"):
+        """
+        Create a new component result.
+        """
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestComponentsResults
@@ -435,7 +446,7 @@ class SQSDatabase:
                 %s FROM TestSteps WHERE tcid=%d'''
 
         cur.execute(q, (self.tc_id, "type", "", "logTEXT",
-                        title, "", "value", "", self.tc_id))
+                        title[:254], "", "value", "", self.tc_id))
         self.ts_pos = cur.fetchone()[0]
         self.c.commit()
         return self.ts_pos
@@ -475,7 +486,7 @@ class SQSDatabase:
 if __name__ == '__main__':
     data = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db = SQSDatabase(*data)
-    db.clear()
+    # db.clear()
     # exit()
     # db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
     # print db.label("HELLOTEST_17_04_2013")
@@ -494,16 +505,23 @@ if __name__ == '__main__':
     result_path = 'R:\\PE\\Testdata\\CRTI-Test\\ImplSW_RLS_2013-A\\RTIxxxMM' \
                   '\\Res\\INT17\\T_01\\ts_results_rti1005.mat'
     # result = RTITEResult(result_path)
-
+    i = 0
     result_path = r"R:\PE\Testdata\CRTI-Test\ImplSW_RLS_2013-A\RTIFlexRay"
     for n, path in enumerate(find_results.results(result_path, 'rtite')):
         start = time.time()
         try:
             result = RTITEResult(path)
-            print "{:8d} {!s:<140} {!s:>20}".format(n, result.path, result.time),
+            print "{:8d} {!s:<140} {!s:>20}".format(n, result.path, result.start),
 
             ignore_tags = ('Res', 'RTIxxxMM', 'RTIFlexRay', 'ts_results', 'rti')
-            db.label(' '.join(t for t in result.tags if not t.startswith(ignore_tags)))
+
+            tags = filter(lambda t: not t.startswith(ignore_tags), result.tags)
+            tags = map(lambda t: t.replace(' ', '-'), tags)
+            print
+            print tags
+            print [t for t in result.tags if t.lower().startswith('rti')]
+            break
+            db.label('_'.join(tags))
             db.path([t for t in result.tags if t.lower().startswith('rti')])
 
             db.component_result(executed_by="Regression Test", os=result.os,
@@ -517,12 +535,13 @@ if __name__ == '__main__':
                 db.test_case(s.id, description=s.comment)
                 possible_results = {'Ok': 0, 'Fail': 1, 'Not Executed': -1,
                                     'Excluded': -1}
-                db.test_case_result(possible_results[s.state], start_time=s.start,
-                                    stop_time=s.end)
+                db.test_case_result(possible_results[s.state],
+                                    start_time=s.start, stop_time=s.end)
 
-                for n, l in enumerate(s.log, 1):
+                for n, l in enumerate(s.log, 0):
                     db.test_step("Stage {}".format(n))
                     # db.test_case_result_file("Stage{}.txt".format(n), l)
+                    # print s.teststage_failed,
                     db.test_step_result(1 if s.teststage_failed == n else 0,
                                         timestamp=s.start, text=l)
 
@@ -531,4 +550,7 @@ if __name__ == '__main__':
             state = 'EXCEPT'
             print exc
         print "{!s:>10} {:10.2f} sec".format(state, time.time() - start)
+        i += 1
+        if i > 3:
+            break
 
