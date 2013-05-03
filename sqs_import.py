@@ -59,8 +59,9 @@ def import_result(db, result):
                             start_time=s.start, stop_time=s.end)
         for n, l in enumerate(s.log, 0):
             db.test_step(l['name'])
-            db.test_step_result(l['status'], timestamp=s.start,
-                                text=l['message'])
+            db.test_step_result(
+                l['status'], timestamp=l.get('timestamp') or s.start,
+                text=l['message'])
     # db.label('_'.join(tags))
     # db.path([t for t in result.tags if t.lower().startswith(('rti', 'crtita'))])
     # db.component_result(executed_by="Regression Test", os=result.os,

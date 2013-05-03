@@ -220,7 +220,7 @@ class SQSDatabase:
         return self.label_id
 
     def component_result(self, timestamp=datetime.now(), executed_by="",
-                         os=["Unknown", "", "", ""], pc="Unknown",
+                         os="Unknown", pc="Unknown",
                          candidate=["Unknown", "Unknown", "Unknown", "Unknown",
                          "Unknown"], platform="Unknown", interface="Unknown",
                          remarks="None"):
@@ -261,7 +261,7 @@ class SQSDatabase:
                   os[0], "", "",
                   # "October 19, 1962 4:35:47 PM",
                   time.mktime(timestamp.timetuple()),
-                  pc, '{} {} ({}) {}bit'.format(*os), executed_by] + \
+                  pc, os, executed_by] + \
                   candidate + \
                   [platform, interface, remarks, "0", "0"]
 
