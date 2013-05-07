@@ -5,6 +5,8 @@ Remove all contents from a SQS-Database and create new path roots.
 
 from datetime import datetime
 import time
+import logging
+
 import pymssql
 
 class SQSDatabase:
@@ -39,6 +41,7 @@ class SQSDatabase:
 
     def __init__(self, host, user, password, database):
         print "Connecting to %s:" % (host, ),
+        self.last_tg_id = None
         try:
             self.c = pymssql.connect(host=host, user=user, password=password,
                                      database=database)
@@ -195,6 +198,7 @@ class SQSDatabase:
             parent, tlid1, tlid2 = self.__node_insert(cur, path, level, parent,
                                                       tlid1, tlid2)
         self.parrent, self.tlid1, self.tlid2 = parent, tlid1, tlid2
+        return self.parrent, self.tlid1, self.tlid2
 
     def __label_get(self, cur, label):
         cur.execute('SELECT labelid FROM LabelIDNames WHERE sslabel=%s',
@@ -219,8 +223,8 @@ class SQSDatabase:
             self.c.commit()
         return self.label_id
 
-    def component_result(self, timestamp=datetime.now(), executed_by="",
-                         os="Unknown", pc="Unknown",
+    def component_result(self, path, label, timestamp=datetime.now(),
+                         executed_by="", os="Unknown", pc="Unknown",
                          candidate=["Unknown", "Unknown", "Unknown", "Unknown",
                          "Unknown"], platform="Unknown", interface="Unknown",
                          remarks="None"):
@@ -257,7 +261,7 @@ class SQSDatabase:
 
         # print time.mktime(timestamp.timetuple())
 
-        params = [self.parrent, self.tlid1, self.tlid2, self.label_id,
+        params = [path[0], path[1], path[2], label,
                   os[0], "", "",
                   # "October 19, 1962 4:35:47 PM",
                   time.mktime(timestamp.timetuple()),
@@ -266,41 +270,39 @@ class SQSDatabase:
                   [platform, interface, remarks, "0", "0"]
 
         cur.execute(q, tuple(params))
-        self.tcompr_id = cur.fetchone()[0]
+        tcompr_id = cur.fetchone()[0]
         self.c.commit()
-        return self.tcompr_id
+        return tcompr_id
 
-    def __test_group_get(self, cur, name):
+    def __test_group_get(self, cur, path, name):
         cur.execute('SELECT tgid FROM TestGroups WHERE prtcid=%d AND ' \
                     'tlid1=%d AND tlid2=%d AND name=%s',
-                    (self.parrent, self.tlid1, self.tlid2, name))
+                    (path[0], path[1], path[2], name))
         r = cur.fetchone()
         return r[0] if r else None
 
-    def test_group(self, name):
+    def test_group(self, path, name):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestGroups (prtcid, tlid1, tlid2, tgid, name)
             OUTPUT INSERTED.tgid
             SELECT %d, %d, %d, ISNULL(MAX(tgid), 0) + 1, %s FROM TestGroups'''
 
-        self.tg_id = self.__test_group_get(cur, name)
-        if not self.tg_id:
-            cur.execute('SELECT max(tgid) FROM TestGroups')
-            tg_id = (cur.fetchone()[0] or 0) + 1
-
-            cur.execute(q, (self.parrent, self.tlid1, self.tlid2, name))
-            self.tg_id = cur.fetchone()[0]
+        tg_id = self.__test_group_get(cur, path, name)
+        if not tg_id:
+            cur.execute(q, (path[0], path[1], path[2], name))
+            tg_id = cur.fetchone()[0]
             self.c.commit()
-        return self.tg_id
+        return tg_id
 
-    def __test_group_result_get(self, cur):
+    def __test_group_result_get(self, cur, group, component_result):
         cur.execute('SELECT tgrid FROM TestGroupsResults WHERE tgid=%d AND ' \
-                    'tcomprid=%d', (self.tg_id, self.tcompr_id))
+                    'tcomprid=%d', (group, component_result))
         r = cur.fetchone()
         return r[0] if r else None
 
-    def test_group_result(self):
+
+    def test_group_result(self, group, component_result):
         cur = self.c.cursor()
         q = '''INSERT INTO TestGroupsResults
                (tgrid, tgid, tcomprid, tgResult, cor_tgResult,
@@ -318,60 +320,61 @@ class SQSDatabase:
                 %s, %s, %s,
                 %d, %d, %d, %d FROM TestGroupsResults'''
 
-        self.tgr_id = self.__test_group_result_get(cur)
-        if not self.tgr_id:
-            cur.execute(q, (self.tg_id, self.tcompr_id, 0, 0,
+        tgr_id = self.__test_group_result_get(cur, group, component_result)
+        if not tgr_id:
+            cur.execute(q, (group, component_result, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 0,
                             "", "", "",
                             0, 0, 0, 0))
-            self.tgr_id = cur.fetchone()[0]
+            tgr_id = cur.fetchone()[0]
             self.c.commit()
-        return self.tgr_id
+        return tgr_id
 
-    def __test_case_name_get(self, cur, name):
+    def __test_case_name_get(self, cur, group, name):
         cur.execute('SELECT tcnid FROM TestCasesName WHERE tgid=%d AND ' \
-                    'name=%s', (self.tg_id, name))
+                    'name=%s', (group, name))
         r = cur.fetchone()
         return r[0] if r else None
 
-    def __test_case_get(self, cur, version):
+    def __test_case_get(self, cur, tcn_id, version):
         cur.execute('SELECT tcid FROM TestCases WHERE tcnid=%s AND ' \
-                    'version=%s', (self.tcn_id, version))
+                    'version=%s', (tcn_id, version))
         r = cur.fetchone()
         return r[0] if r else None
 
-    def test_case(self, name, timestamp=datetime.now(), version="0",
+    def test_case(self, group, name, timestamp=datetime.now(), version="0",
                   author="Unknown", description=""):
         cur = self.c.cursor()
         q = '''INSERT INTO TestCasesName (tgid, tcnid, name)
                OUTPUT INSERTED.tcnid
                SELECT %d, ISNULL(MAX(tcnid), 0) + 1, %s FROM TestCasesName'''
 
-        self.tcn_id = self.__test_case_name_get(cur, name)
-        if not self.tcn_id:
-            cur.execute(q, (self.tg_id, name))
-            self.tcn_id = cur.fetchone()[0]
+        tcn_id = self.__test_case_name_get(cur, group, name)
+        if not tcn_id:
+            cur.execute(q, (group, name))
+            tcn_id = cur.fetchone()[0]
 
         q = '''INSERT INTO TestCases (tcnid, tcid, date, version, ssver, name,
                 author, testDescription) OUTPUT INSERTED.tcid
                SELECT %d, ISNULL(MAX(tcid), 0) + 1, %s, %s, %d, %s, %s, %d
                FROM TestCases'''
 
-        self.tc_id = self.__test_case_get(cur, version)
-        if not self.tc_id:
-            cur.execute(q, (self.tcn_id, timestamp, version, 0, name, author,
+        tc_id = self.__test_case_get(cur, tcn_id, version)
+        if not tc_id:
+            cur.execute(q, (tcn_id, timestamp, version, 0, name, author,
                             description))
-            self.tc_id = cur.fetchone()[0]
+            tc_id = cur.fetchone()[0]
 
         self.c.commit()
-        return self.tcn_id, self.tc_id
+        return tcn_id, tc_id
 
-    def test_case_result(self, result, start_time="", stop_time="", os=""):
+    def test_case_result(self, component_result, group_result, test_case,
+                         result, start_time="", stop_time="", os=""):
         cur = self.c.cursor()
 
         cur.execute('SELECT name, author, date, version, ssver ' \
-                    'FROM TestCases WHERE tcid=%d', (self.tc_id, ))
+                    'FROM TestCases WHERE tcid=%d', (test_case[1], ))
         name, author, changedate, version, ssver = cur.fetchone()
 
         q = '''INSERT INTO TestCasesResults
@@ -388,13 +391,13 @@ class SQSDatabase:
                        %d, %d, %d, %d, %d, %d, %d, %d,
                        %s, %s, %s, %d, %d FROM TestCasesResults'''
 
-        cur.execute(q, (self.tcn_id, ssver, self.tgr_id, os,
+        cur.execute(q, (test_case[0], ssver, group_result, os,
                         name, author, changedate, version,
                         start_time, stop_time,
                         result, result,
                         0, 0, 0, 0, 0, 0, 0, 0,
                         "", "", "", 0, 0))
-        self.tcr_id = cur.fetchone()[0]
+        tcr_id = cur.fetchone()[0]
 
         # not visible in the wrv?
         q = '''INSERT INTO TestCasesResultDescription
@@ -403,22 +406,22 @@ class SQSDatabase:
                 software, hardware, descriptionValue) VALUES
                (%d, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'''
 
-        cur.execute(q, (self.tcr_id, "", "", "", "", "",
+        cur.execute(q, (tcr_id, "", "", "", "", "",
                         "", "", "", "",
                         "", "", ""))
 
         result_colums = {0: 'tc_ok', 1: 'tc_fail', -1: 'tc_no'}
         q = '''UPDATE TestGroupsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
                WHERE tgrid=%d'''.format(c=result_colums[result])
-        cur.execute(q, self.tgr_id)
+        cur.execute(q, group_result)
 
         result_colums = {0: 'tc_ok', 1: 'tc_fail', -1: 'tc_no'}
         q = '''UPDATE TestComponentsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
                WHERE tcomprid=%d'''.format(c=result_colums[result])
-        cur.execute(q, self.tcompr_id)
+        cur.execute(q, component_result)
 
         self.c.commit()
-        return self.tcr_id
+        return tcr_id
 
     def test_case_result_file(self, name, content):
         cur = self.c.cursor()
@@ -434,7 +437,7 @@ class SQSDatabase:
         self.tcrf_id = cur.fetchone()[0]
         self.c.commit()
 
-    def test_step(self, title):
+    def test_step(self, test_case, title):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestSteps
@@ -445,13 +448,15 @@ class SQSDatabase:
                 STR(ISNULL(MAX(pos), 0) + 1), %s, %s, %s,
                 %s FROM TestSteps WHERE tcid=%d'''
 
-        cur.execute(q, (self.tc_id, "type", "", "logTEXT",
-                        title[:254], "", "value", "", self.tc_id))
-        self.ts_pos = cur.fetchone()[0]
+        cur.execute(q, (test_case[1], "type", "", "logTEXT",
+                        title[:254], "", "value", "", test_case[1]))
+        ts_pos = cur.fetchone()[0]
         self.c.commit()
-        return self.ts_pos
+        return ts_pos
 
-    def test_step_result(self, result, timestamp=datetime.now(), text=""):
+    def test_step_result(self, component_result, group, test_case,
+                         test_case_result, test_step,
+                         result, timestamp=datetime.now(), text=""):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestStepsResults
@@ -462,31 +467,30 @@ class SQSDatabase:
                 %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s)'''
 
-        cur.execute(q, (self.ts_pos, self.tcr_id, self.tc_id, str(self.ts_pos),
-                        text, result, result, str(self.ts_pos),
+        cur.execute(q, (test_step, test_case_result, test_case[1],
+                        str(test_step), text, result, result, str(test_step),
                         timestamp, "", "", "", "", "", "", "", ""))
 
         result_colums = {0: 'ts_ok', 1: 'ts_fail', -1: 'ts_no'}
         q = '''UPDATE TestCasesResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
                WHERE tcrid=%d'''.format(c=result_colums[result])
-        cur.execute(q, self.tcr_id)
+        cur.execute(q, test_case_result)
 
         q = '''UPDATE TestGroupsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
                WHERE tgrid=%d'''.format(c=result_colums[result])
-        cur.execute(q, self.tgr_id)
+        cur.execute(q, group)
 
         q = '''UPDATE TestComponentsResults SET {c} = {c} + 1, cor_{c} = cor_{c} + 1
                WHERE tcomprid=%d'''.format(c=result_colums[result])
-        cur.execute(q, self.tcompr_id)
+        cur.execute(q, component_result)
 
         self.c.commit()
-        return self.ts_pos
 
 
 if __name__ == '__main__':
     data = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db = SQSDatabase(*data)
-    # db.clear()
+    db.clear()
     # exit()
     # db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
     # print db.label("HELLOTEST_17_04_2013")
