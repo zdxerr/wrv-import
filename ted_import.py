@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
+"""
+TED-Database Importer.
+"""
 
 import re
 
 import requests
 
-from test_result_parser import RTITEResult
-import find_results
-from utilities import timeit, sizeof_fmt
+from utilities import find_results, timeit, sizeof_fmt
 
 URL = 'http://ted:5000'
 
@@ -80,8 +81,8 @@ def main():
 if __name__ == '__main__':
     reset()
     main()
-    # timeit.show(False)
     timeit.average()
+
     print create_sequence.count
 
     import sys
