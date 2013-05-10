@@ -3,6 +3,34 @@
 import time
 from math import fsum
 
+from test_result_parser import RTITEResult, CRTITAResult
+
+
+RESULT_FILE_TYPES = {
+    'ts_results': RTITEResult,
+    'crtita_res': CRTITAResult,
+    # 'testbutler': "maintest.log.xml"
+}
+IGNORED_FOLDERS = ["TestReport", "HtmlPages", "KwSearchPages", "Icons"]
+
+
+def find_results(result_path):
+    """Return all results in a certain path."""
+    if os.path.isdir(result_path):
+        for path, folders, files in os.walk(result_path):
+            # remove ignored folders from list of folders
+            folders[:] = [f for f in folders if f not in IGNORED_FOLDERS]
+
+            for f in files:
+                f_short = f[:10].lower()
+                if f_short in RESULT_FILE_TYPES:
+                    yield RESULT_FILE_TYPES[f_short](os.path.join(path, f))
+
+    elif os.path.isfile(result_path):
+        f_short = os.path.basename(result_path)[:10].lower()
+        if f_short in RESULT_FILE_TYPES:
+            yield RESULT_FILE_TYPES[f_short](result_path)
+
 
 def timeit(fn):
     """
