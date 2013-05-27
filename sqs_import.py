@@ -24,7 +24,6 @@ def import_result(db, result):
     groups = {}
     group_results = {}
     test_cases = {}
-
     for s in result.sequences:
         path_str = '\\'.join(result.nodes + s.nodes)
 
@@ -89,6 +88,5 @@ if __name__ == '__main__':
     for path in remainder:
         for result in find_results(path):
             print result.path
-            if options.list:
-                continue
-            import_result(db, result)
+            if not options.list:
+                import_result(db, result)

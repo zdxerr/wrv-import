@@ -21,8 +21,8 @@ def reset():
 
 
 @timeit
-def create_run(time):
-    data = {'time': time}
+def create_run(name, description, tags=[]):
+    data = {'name': name, 'description': description, 'tags': " ".join(tags)}
     r = s.post('{}/{}/'.format(URL, 'run'), data=data)
     assert(r.ok)
     return r.json['id']
@@ -38,7 +38,7 @@ def create_sequence(name, tags=[]):
         create_sequence.count += 1
         return r.json['id']
     elif r.status_code == 409:
-        print 'EXISTS',
+        print 'EXISTS'
         r = s.get('{}/{}/'.format(URL, 'sequence'), params={'q': name})
         if not r.ok:
             print r.text
@@ -60,9 +60,9 @@ def create_result(run_id, sequence_id, time, state):
 
 
 @timeit
-def create_log(run_id, sequence_id, time, message):
+def create_log(run_id, sequence_id, time, message, severity='Info'):
     data = {'run_id': run_id, 'sequence_id': sequence_id, 'time': time,
-            'severity': 'Info', 'message': message}
+            'severity': severity, 'message': message}
     r = s.post('{}/{}/'.format(URL, 'log'), data=data)
     assert(r.ok)
 
@@ -73,13 +73,17 @@ def main():
                   r'\Res\INT05\T_01'
     for n, result in enumerate(find_results(result_path)):
         print n, result, result.start
-        run_id = create_run(result.start)
+        run_id = create_run(result.name, result.description, result.tags)
+
         for sequence in result.sequences:
             sequence_id = create_sequence(sequence.id,
                                           re.split(r'\W+', sequence.id))
             create_result(run_id, sequence_id, sequence.start, sequence.state)
             for l in sequence.log:
-                create_log(run_id, sequence_id, sequence.start, l)
+                create_log(run_id, sequence_id, l['timestamp'], l['message'],
+                           ('Error' if any(w in l['message'].lower()
+                                          for w in ('fail', 'error'))
+                            else 'Info'))
 
 
 if __name__ == '__main__':

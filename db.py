@@ -9,6 +9,8 @@ import logging
 
 import pymssql
 
+
+
 class SQSDatabase:
     tables = [
         'component',
@@ -373,6 +375,10 @@ class SQSDatabase:
                          result, start_time="", stop_time="", os=""):
         cur = self.c.cursor()
 
+        logging.debug("Create test case result (%s).",
+                      ', '.join(map(str, (component_result, group_result,
+                                          test_case, result,))))
+
         cur.execute('SELECT name, author, date, version, ssver ' \
                     'FROM TestCases WHERE tcid=%d', (test_case[1], ))
         name, author, changedate, version, ssver = cur.fetchone()
@@ -423,7 +429,7 @@ class SQSDatabase:
         self.c.commit()
         return tcr_id
 
-    def test_case_result_file(self, name, content):
+    def test_case_result_file(self, test_case_result, name, content):
         cur = self.c.cursor()
 
         q = '''INSERT INTO TestCasesResultDBFiles
@@ -433,7 +439,8 @@ class SQSDatabase:
                SELECT ISNULL(MAX(fileId), 0) + 1, %s, %d, %s, %s, %d, %d
                FROM TestCasesResultDBFiles'''
 
-        cur.execute(q, ('txt', len(content), name, content, 0, self.tcr_id))
+        cur.execute(q, ('txt', len(content), name, content, 0,
+                        test_case_result))
         self.tcrf_id = cur.fetchone()[0]
         self.c.commit()
 
@@ -448,8 +455,8 @@ class SQSDatabase:
                 STR(ISNULL(MAX(pos), 0) + 1), %s, %s, %s,
                 %s FROM TestSteps WHERE tcid=%d'''
 
-        cur.execute(q, (test_case[1], "type", "", "logTEXT",
-                        title[:254], "", "value", "", test_case[1]))
+        cur.execute(q, (test_case[1], "", "", "",
+                        title[:254], "", "", "", test_case[1]))
         ts_pos = cur.fetchone()[0]
         self.c.commit()
         return ts_pos
@@ -458,6 +465,10 @@ class SQSDatabase:
                          test_case_result, test_step,
                          result, timestamp=datetime.now(), text=""):
         cur = self.c.cursor()
+
+        logging.debug("Create test step result (%s).",
+                      ', '.join(map(str, (component_result, group, test_case,
+                                 test_case_result, test_step, result))))
 
         q = '''INSERT INTO TestStepsResults
                (pos, tcrid, tcid, ts_pos, logText, result, cor_result,
@@ -488,21 +499,24 @@ class SQSDatabase:
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     data = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
     db = SQSDatabase(*data)
     db.clear()
-    # exit()
-    # db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
+    path = db.path('RTIxxxMM/subfolder/second/third/fourth/fives/six/seven/ei')
+    label = db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
     # print db.label("HELLOTEST_17_04_2013")
-    # print db.label("HELLOTEST_17_04_2013")
-    # print db.component_result()
-    # print db.test_group('YOYOYO')
-    # print db.test_group_result()
-    # print db.test_case('my tc', author='me')
-    # print db.test_case_result(0)
-    # print db.test_step("my test step!")
-    # print db.test_step_result(2)
+    component_result = db.component_result(path, label)
+    group = db.test_group(path, 'YOYOYO')
+    group_result = db.test_group_result(group, component_result)
+    test_case = db.test_case(group, 'my tc', author='me')
+    tcr = db.test_case_result(component_result, group_result, test_case, 0)
+    ts = db.test_step(test_case, "my test step!")
+    tsr = db.test_step_result(component_result, group, test_case, tcr, ts, 0,
+                              text="WHAT?")
+
+    exit()
 
     from test_result_parser import RTITEResult
     import find_results
