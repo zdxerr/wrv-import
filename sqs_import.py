@@ -14,7 +14,6 @@ from db import SQSDatabase
 
 __version__ = '$Revision: $'
 
-
 def import_result(db, result):
     ignore_tags = ('Res', 'RTIxxxMM', 'RTIFlexRay', 'ts_results', 'rti')
     label = db.label(result.label)

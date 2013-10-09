@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Remove all contents from a SQS-Database and create new path roots.
+Basic functions to create and remove data from the SQSDatabase, which is used 
+by the Web-Result-Viewer.
 """
 
 from datetime import datetime
@@ -8,7 +9,6 @@ import time
 import logging
 
 import pymssql
-
 
 
 class SQSDatabase:

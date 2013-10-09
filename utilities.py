@@ -47,37 +47,26 @@ def timeit(fn):
         c = '{}({})'.format(fn.__name__, ', '.join(arg_list))
         c = (c[:48] + '..') if len(c) > 48 else c
 
-        timeit.times.append({'call': c, 'function': fn.__name__,
-                             'args': args, 'kwargs': kwargs, 'start': start,
-                             'end': end, 'time': end - start})
+        try:
+            timeit.times[fn.__name__] += end - start
+            timeit.times[fn.__name__] /= 2
+        except:
+            timeit.times[fn.__name__] = end - start
 
         if timeit.verbose:
-            timeit.show()
+            print "> timeit: {:>50} {:16.6f} seconds.".format(c, end - start)
 
         if result:
             return result
     return wrapped
 
 timeit.verbose = False
-timeit.times = []
-
-
-def show(last=True):
-    for t in timeit.times[-1 if last else 0:]:
-        print "> timeit: {call:>50} {time:16.6f} seconds.".format(**t)
-
-timeit.show = show
+timeit.times = {}
 
 
 def average():
-    function_times = {}
-    for t in timeit.times:
-        if t['function'] not in function_times:
-            function_times[t['function']] = []
-        function_times[t['function']].append(t['time'])
-    for k, times in function_times.iteritems():
-        average = fsum(times) / len(times)
-        print "> timeit: {:>50} {:16.6f} seconds.".format(k, average)
+    for fn, time in timeit.times.iteritems():
+        print "> timeit: {:>50} {:16.6f} seconds.".format(fn, time)
 
 
 timeit.average = average
