@@ -12,6 +12,8 @@ import pymssql
 
 
 class SQSDatabase:
+    """Represent the whole database and group operations on it."""
+
     tables = [
         'component',
         'files',
@@ -42,18 +44,12 @@ class SQSDatabase:
     ]
 
     def __init__(self, host, user, password, database):
-        print "Connecting to %s:" % (host, ),
-        self.last_tg_id = None
-        try:
-            self.c = pymssql.connect(host=host, user=user, password=password,
+        self.con = pymssql.connect(host=host, user=user, password=password,
                                      database=database)
-        except Exception, exc:
-            print "FAILED", exc
-        else:
-            print "OK"
+
 
     def __del__(self):
-        self.c.close()
+        self.con.close()
         print "Connection closed."
 
     def clear(self):
@@ -61,7 +57,7 @@ class SQSDatabase:
         Delete all entries from all tables, except for the user_settings.
         """
         tables = list(self.tables)
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         while tables:
             table = tables.pop(0)
@@ -71,7 +67,7 @@ class SQSDatabase:
                 # cur.execute('ALTER TABLE ' + table + ' DISABLE TRIGGER ALL')
                 cur.execute('DELETE '+ table)
                 # cur.execute('TRUNCATE TABLE ' + table)
-                self.c.commit()
+                self.con.commit()
             except Exception, exc:
                 print "FAILED", exc
                 try:
@@ -94,7 +90,7 @@ class SQSDatabase:
         """
         cur.execute('UPDATE TLIDName SET leaf=%d WHERE path = %s',
                     (1 if leaf else 0, path_str, ))
-        self.c.commit()
+        self.con.commit()
 
     def __node_get(self, cur, path_str):
         """
@@ -180,7 +176,7 @@ class SQSDatabase:
 
         cur.execute(q, (id, tlid1, tlid2, 1 if len(path) - 1 == level else 0,
                     path_str, path[level], '', ''))
-        self.c.commit()
+        self.con.commit()
 
         return self.__node_get(cur, path_str)
 
@@ -194,7 +190,7 @@ class SQSDatabase:
         if not isinstance(path, list):
             raise TypeError
 
-        cur = self.c.cursor()
+        cur = self.con.cursor()
         parent, tlid1, tlid2 = None, 0, 0
         for level, node in enumerate(path):
             parent, tlid1, tlid2 = self.__node_insert(cur, path, level, parent,
@@ -212,7 +208,7 @@ class SQSDatabase:
         """
         Create a label if it does not exist and return its id.
         """
-        cur = self.c.cursor()
+        cur = self.con.cursor()
         q = 'INSERT INTO LabelIDNames (labelid, sslabel, display_label, ' \
             'Date, OfficialLabel) OUTPUT INSERTED.labelid ' \
             'SELECT ISNULL(MAX(labelid), 0) + 1, %s, %s, %s, 0 '\
@@ -222,7 +218,7 @@ class SQSDatabase:
         if not self.label_id:
             cur.execute(q, (label, label, str(timestamp)))
             self.label_id = cur.fetchone()[0]
-            self.c.commit()
+            self.con.commit()
         return self.label_id
 
     def component_result(self, path, label, timestamp=datetime.now(),
@@ -233,7 +229,7 @@ class SQSDatabase:
         """
         Create a new component result.
         """
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         q = '''INSERT INTO TestComponentsResults
                (prtcid, tlid1, tlid2, labelid, os, tcomprid,
@@ -273,7 +269,7 @@ class SQSDatabase:
 
         cur.execute(q, tuple(params))
         tcompr_id = cur.fetchone()[0]
-        self.c.commit()
+        self.con.commit()
         return tcompr_id
 
     def __test_group_get(self, cur, path, name):
@@ -284,7 +280,7 @@ class SQSDatabase:
         return r[0] if r else None
 
     def test_group(self, path, name):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         q = '''INSERT INTO TestGroups (prtcid, tlid1, tlid2, tgid, name)
             OUTPUT INSERTED.tgid
@@ -294,7 +290,7 @@ class SQSDatabase:
         if not tg_id:
             cur.execute(q, (path[0], path[1], path[2], name))
             tg_id = cur.fetchone()[0]
-            self.c.commit()
+            self.con.commit()
         return tg_id
 
     def __test_group_result_get(self, cur, group, component_result):
@@ -305,7 +301,7 @@ class SQSDatabase:
 
 
     def test_group_result(self, group, component_result):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
         q = '''INSERT INTO TestGroupsResults
                (tgrid, tgid, tcomprid, tgResult, cor_tgResult,
                 tc_ok, cor_tc_ok, tc_fail, cor_tc_fail, tc_crash, cor_tc_crash,
@@ -330,7 +326,7 @@ class SQSDatabase:
                             "", "", "",
                             0, 0, 0, 0))
             tgr_id = cur.fetchone()[0]
-            self.c.commit()
+            self.con.commit()
         return tgr_id
 
     def __test_case_name_get(self, cur, group, name):
@@ -347,7 +343,7 @@ class SQSDatabase:
 
     def test_case(self, group, name, timestamp=datetime.now(), version="0",
                   author="Unknown", description=""):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
         q = '''INSERT INTO TestCasesName (tgid, tcnid, name)
                OUTPUT INSERTED.tcnid
                SELECT %d, ISNULL(MAX(tcnid), 0) + 1, %s FROM TestCasesName'''
@@ -368,12 +364,12 @@ class SQSDatabase:
                             description))
             tc_id = cur.fetchone()[0]
 
-        self.c.commit()
+        self.con.commit()
         return tcn_id, tc_id
 
     def test_case_result(self, component_result, group_result, test_case,
                          result, start_time="", stop_time="", os=""):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         logging.debug("Create test case result (%s).",
                       ', '.join(map(str, (component_result, group_result,
@@ -426,11 +422,11 @@ class SQSDatabase:
                WHERE tcomprid=%d'''.format(c=result_colums[result])
         cur.execute(q, component_result)
 
-        self.c.commit()
+        self.con.commit()
         return tcr_id
 
     def test_case_result_file(self, test_case_result, name, content):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         q = '''INSERT INTO TestCasesResultDBFiles
                (fileId, fileType, fileSize, fileNameOrig, fileContent,
@@ -442,10 +438,10 @@ class SQSDatabase:
         cur.execute(q, ('txt', len(content), name, content, 0,
                         test_case_result))
         self.tcrf_id = cur.fetchone()[0]
-        self.c.commit()
+        self.con.commit()
 
     def test_step(self, test_case, title):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         q = '''INSERT INTO TestSteps
                (pos, tcid, type, image, logText,
@@ -458,13 +454,13 @@ class SQSDatabase:
         cur.execute(q, (test_case[1], "", "", "",
                         title[:254], "", "", "", test_case[1]))
         ts_pos = cur.fetchone()[0]
-        self.c.commit()
+        self.con.commit()
         return ts_pos
 
     def test_step_result(self, component_result, group, test_case,
                          test_case_result, test_step,
                          result, timestamp=datetime.now(), text=""):
-        cur = self.c.cursor()
+        cur = self.con.cursor()
 
         logging.debug("Create test step result (%s).",
                       ', '.join(map(str, (component_result, group, test_case,
@@ -495,7 +491,7 @@ class SQSDatabase:
                WHERE tcomprid=%d'''.format(c=result_colums[result])
         cur.execute(q, component_result)
 
-        self.c.commit()
+        self.con.commit()
 
 
 if __name__ == '__main__':

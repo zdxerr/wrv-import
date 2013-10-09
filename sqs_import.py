@@ -14,6 +14,10 @@ from db import SQSDatabase
 
 __version__ = '$Revision: $'
 
+# login as hostname, username, password, database
+LOGIN = ('hostname', 'username', 'password', 'database')
+
+
 def import_result(db, result):
     ignore_tags = ('Res', 'RTIxxxMM', 'RTIFlexRay', 'ts_results', 'rti')
     label = db.label(result.label)
@@ -66,6 +70,7 @@ def import_result(db, result):
                 l['status'], timestamp=l.get('timestamp') or s.start,
                 text=l['message'])
 
+
 if __name__ == '__main__':
     parser = optparse.OptionParser(usage='usage: %prog [options] <path>',
                                    description=__doc__,
@@ -73,13 +78,16 @@ if __name__ == '__main__':
 
     parser.add_option('-c', '--clear', dest='clear', default=False,
                       action='store_true', help="Clear database contents")
-    parser.add_option('-l', '--list', dest='list', default=False,
+    parser.add_option('-n', '--no-import', dest='list', default=False,
                       action='store_true', help="List result files in <path>")
+    parser.add_option("-l", "--label", dest="label", default=None,
+                      help="custom label for all imported test results", 
+                      metavar="LABEL")
 
     options, remainder = parser.parse_args()
 
-    login = ('VM-DB-DEV1\SQL2008', 'SQS_CRTI', 'cvb7bwwm', 'SQS_CRTI_BTP')
-    db = SQSDatabase(*login)
+    
+    db = SQSDatabase(*LOGIN)
 
     if options.clear:
         db.clear()
@@ -87,5 +95,8 @@ if __name__ == '__main__':
     for path in remainder:
         for result in find_results(path):
             print result.path
+            print options.label
+            if options.label:
+                result.label = options.label
             if not options.list:
                 import_result(db, result)
